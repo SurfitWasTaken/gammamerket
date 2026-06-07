@@ -58,7 +58,7 @@ Update the Status column as phases complete.
 - **Core sim**: pure Python + NumPy (no Pandas in the hot path)
 - **Options pricing**: SciPy for norm CDF in Black-Scholes
 - **Event scheduling**: custom priority queue (heapq) — no SimPy dependency
-- **Visualisation**: Matplotlib (post-run), optional Rich for terminal output
+- **Visualisation**: Matplotlib (post-run + live `sim.viz` subprocess for the REPL), optional Rich for terminal output
 - **Testing**: pytest
 - **Config**: PyYAML for params.yaml
 
