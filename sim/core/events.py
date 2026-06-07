@@ -57,6 +57,8 @@ class Fill:
     Args:
         taker_order_id: The aggressive (incoming) order.
         maker_order_id: The resting (passive) order.
+        taker_agent_id: agent_id of the taker (for routing/analytics).
+        maker_agent_id: agent_id of the maker (for routing/analytics).
         aggressor_side: Side of the taker.
         price: Execution price in ticks. Always equals the maker's price
             (price-time priority: the resting order sets the price).
@@ -66,6 +68,8 @@ class Fill:
 
     taker_order_id: uuid.UUID
     maker_order_id: uuid.UUID
+    taker_agent_id: str
+    maker_agent_id: str
     aggressor_side: Side
     price: int
     qty: int

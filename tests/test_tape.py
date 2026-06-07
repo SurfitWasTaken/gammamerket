@@ -14,6 +14,8 @@ def _fill(price: int, qty: int = 1, ts: float = 1.0) -> Fill:
     return Fill(
         taker_order_id=uuid.uuid4(),
         maker_order_id=uuid.uuid4(),
+        taker_agent_id="taker",
+        maker_agent_id="maker",
         aggressor_side=Side.BUY,
         price=price,
         qty=qty,

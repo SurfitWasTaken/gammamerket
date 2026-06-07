@@ -235,6 +235,8 @@ class LimitOrderBook:
                 fill = Fill(
                     taker_order_id=taker.order_id,
                     maker_order_id=maker.order_id,
+                    taker_agent_id=taker.agent_id,
+                    maker_agent_id=maker.agent_id,
                     aggressor_side=taker.side,
                     price=maker.price,
                     qty=trade_qty,
