@@ -254,3 +254,25 @@ def test_invalid_qty_or_price_rejected(book, make) -> None:
 
     with pytest.raises(ValueError, match="qty must be positive"):
         book.submit_market(make.market(Side.BUY, qty=0))
+
+
+def test_book_callable_returns_summary_when_empty(book) -> None:
+    s = book()
+    assert s.startswith("LOB<")
+    assert s.endswith(">")
+    assert "bid=None" in s
+    assert "ask=None" in s
+    assert "spread=None" in s
+    assert "mid=None" in s
+    assert "n_orders=0" in s
+
+
+def test_book_callable_returns_summary_with_orders(book, make) -> None:
+    book.submit_limit(make.limit(Side.BUY, 100, qty=3))
+    book.submit_limit(make.limit(Side.SELL, 101, qty=2))
+    s = book()
+    assert "bid=100" in s
+    assert "ask=101" in s
+    assert "spread=1" in s
+    assert "mid=100.5" in s
+    assert "n_orders=2" in s

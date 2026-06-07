@@ -71,6 +71,15 @@ class LimitOrderBook:
     def __len__(self) -> int:
         return len(self._orders)
 
+    def __call__(self) -> str:
+        """One-line summary of book state. Returned (not printed) so the
+        REPL and tests can echo or assert on it."""
+        return (
+            f"LOB<bid={self.best_bid()}  ask={self.best_ask()}  "
+            f"spread={self.spread()}  mid={self.mid()}  "
+            f"n_orders={len(self)}>"
+        )
+
     def best_bid(self) -> Optional[int]:
         if not self.bids:
             return None
