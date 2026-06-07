@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from sim.agents.equity_mm import EquityMarketMaker, EquityMMConfig
 from sim.agents.institution import Institution
 from sim.agents.retail import Retail
 from sim.analytics.metrics import (
@@ -85,17 +86,35 @@ def _build_agents(cfg: dict, rng: np.random.Generator) -> list:
             rng=rng,
         )
     )
+    mm_cfg = cfg["agents"]["equity_mm"]
+    agents.append(
+        EquityMarketMaker(
+            agent_id="mm0",
+            config=EquityMMConfig(
+                arrival_rate=float(mm_cfg["arrival_rate"]),
+                spread_target=int(mm_cfg["spread_target"]),
+                inventory_limit=int(mm_cfg["inventory_limit"]),
+                risk_aversion=float(mm_cfg["risk_aversion"]),
+                quote_size=int(mm_cfg["quote_size"]),
+                max_orders_per_side=int(mm_cfg["max_orders_per_side"]),
+            ),
+            rng=rng,
+        )
+    )
     return agents
 
 
 def _register(clock: Clock, agents: list, cfg: dict) -> None:
     retail_rate = float(cfg["agents"]["retail"]["arrival_rate"])
     inst_rate = float(cfg["agents"]["institution"]["arrival_rate"])
+    mm_rate = float(cfg["agents"]["equity_mm"]["arrival_rate"])
     for a in agents:
         if isinstance(a, Retail):
             clock.register(a, retail_rate)
         elif isinstance(a, Institution):
             clock.register(a, inst_rate)
+        elif isinstance(a, EquityMarketMaker):
+            clock.register(a, mm_rate)
 
 
 def run(cfg: dict) -> dict[str, Any]:
@@ -193,7 +212,7 @@ def _plot(result: dict, path: Path) -> None:
         axes[2].text(0.5, 0.5, "(no fills)", ha="center", va="center",
                      transform=axes[2].transAxes)
 
-    fig.suptitle("gammarket Phase 2 — run summary")
+    fig.suptitle("gammarket Phase 3 — run summary")
     fig.tight_layout()
     fig.savefig(path, dpi=100)
     plt.close(fig)

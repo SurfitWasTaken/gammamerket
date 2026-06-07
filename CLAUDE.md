@@ -44,7 +44,7 @@ observable experiment before the next adds complexity.
 |-------|------|--------|
 | 1 | LOB Engine | [x] |
 | 2 | Equity Agents + Basic Microstructure | [x] |
-| 3 | Equity Market Maker | [ ] |
+| 3 | Equity Market Maker | [x] |
 | 4 | Options Pricing + Chain | [ ] |
 | 5 | Options Dealer + Delta Hedging | [ ] |
 | 6 | Calibration, Analytics, Full Run | [ ] |
@@ -115,33 +115,44 @@ After every options fill:
 ## Parameters Reference (params.yaml keys)
 ```yaml
 market:
-  tick_size: 0.01
+  tick_size: 1
   lot_size: 100
-  initial_price: 100.0
-  trading_days: 1          # simulation duration
+  initial_price: 10000
+  initial_bid_size: 200
+  initial_ask_size: 200
+  max_steps: 200
+  seed: 42
 
 agents:
   retail:
-    arrival_rate: 10.0     # orders per minute (Poisson lambda)
-    order_size_mean: 1     # lots
-    direction_bias: 0.0    # 0 = perfectly random
+    n_agents: 10
+    arrival_rate: 10.0
+    order_size_mean: 2
+    direction_bias: 0.0
   institution:
-    n_agents: 3
-    capital: 1_000_000
-    position_limit: 5000   # max shares
-    signal_halflife: 30    # minutes
+    arrival_rate: 5.0
+    signal_halflife: 30.0
+    signal_sigma: 1.0
+    threshold: 0.0
+    position_limit: 500
+    quote_offset_ticks: 1
+    scale: 100
+    signal_price_scale: 5
   equity_mm:
-    spread_target: 0.04    # $0.04 initial spread
+    arrival_rate: 20.0
+    spread_target: 4
     inventory_limit: 2000
     risk_aversion: 0.1
+    quote_size: 5
+    max_orders_per_side: 1
   options_mm:
-    vol_estimate: 0.20     # annualised σ for BS pricing
-    spread_vols: 2.0       # bid/ask quoted ± 2 vol points
-    delta_hedge_threshold: 0.05  # re-hedge if |delta| > 0.05
+    vol_estimate: 0.20
+    spread_vols: 2.0
+    delta_hedge_threshold: 0.05
     gamma_limit: 500
 
 options:
-  strikes: [95, 97.5, 100, 102.5, 105]  # relative to spot
+  strikes: [95, 97.5, 100, 102.5, 105]
   expiries_days: [7, 14, 30]
   risk_free_rate: 0.05
 ```

@@ -42,6 +42,14 @@ def _default_cfg(max_steps: int = 100) -> dict:
                 "scale": 100,
                 "signal_price_scale": 5,
             },
+            "equity_mm": {
+                "arrival_rate": 20.0,
+                "spread_target": 4,
+                "inventory_limit": 2000,
+                "risk_aversion": 0.1,
+                "quote_size": 5,
+                "max_orders_per_side": 1,
+            },
         },
     }
 
