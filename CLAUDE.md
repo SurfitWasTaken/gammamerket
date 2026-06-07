@@ -13,6 +13,7 @@ sim/
 │   ├── lob.py            # Limit order book engine (price-time priority)
 │   ├── matching.py       # Order matching logic (partial fills, cancellations)
 │   ├── clock.py          # Discrete event scheduler
+│   ├── tape.py           # Central fill tape (callback-injected into LOB)
 │   └── events.py         # Event types: OrderSubmit, Fill, Cancel, Quote
 ├── agents/
 │   ├── base.py           # Agent base class (perceive → decide → act loop)
@@ -58,7 +59,7 @@ Update the Status column as phases complete.
 - **Core sim**: pure Python + NumPy (no Pandas in the hot path)
 - **Options pricing**: SciPy for norm CDF in Black-Scholes
 - **Event scheduling**: custom priority queue (heapq) — no SimPy dependency
-- **Visualisation**: Matplotlib (post-run + live `sim.viz` subprocess for the REPL), optional Rich for terminal output
+- **Visualisation**: Matplotlib (post-run), optional Rich for terminal output
 - **Testing**: pytest
 - **Config**: PyYAML for params.yaml
 
@@ -160,13 +161,53 @@ Run all tests after every session: `pytest tests/ -v`
 ## Session Workflow (how to work with Claude)
 1. **State the phase** at the start of every session: "We are working on Phase N"
 2. **Paste the failing test or specific error** — don't describe it, paste it
-3. **One module at a time** — complete and test one file before moving on to the next
+3. **One module at a time** — complete and test one file before moving to the next
 4. **After each module**, run: `python -m pytest tests/test_<module>.py -v`
-5. **Auto-commit checkpoints** — after each green test run, the assistant commits automatically: `git add -A && git commit -m "Phase N: <module> complete"`. No user prompt required. Phase 1 is committed retroactively on the first auto-commit cycle.
+5. **Commit checkpoints** — after each passing module: `git add -A && git commit -m "Phase N: <module> complete"`
+
+## Phase 2 Implementation Contracts
+
+### BBO Bootstrap (run_sim.py, not agents)
+`run_sim` places two phantom seed orders before the first agent step:
+- Seed BID: `initial_price - 1 tick`, qty = 1 lot, order_id = `"SEED_BID"`
+- Seed ASK: `initial_price + 1 tick`, qty = 1 lot, order_id = `"SEED_ASK"`
+
+These are regular resting limit orders, not special-cased objects. The equity MM in Phase 3
+will naturally outcompete them and they will age out. Do NOT place seed orders inside any
+agent's `__init__` or `act()` — bootstrap logic belongs exclusively in the runner.
+
+### params.yaml is required from Phase 2 onwards
+Create `config/params.yaml` at the start of Phase 2. All agents and the clock take a
+`config: dict` parameter in their constructors — no magic globals. Load once in `run_sim.py`:
+```python
+import yaml
+with open("config/params.yaml") as f:
+    cfg = yaml.safe_load(f)
+```
+Then pass `cfg["agents"]["retail"]` etc. to each agent constructor. This is the only place
+params.yaml is read. Tests pass their own config dicts directly — no file I/O in tests.
+
+### Fill Logging — Central Tape with Callback Hook
+`core/tape.py` owns the chronological fill list:
+```python
+@dataclass
+class Tape:
+    fills: list[Fill] = field(default_factory=list)
+    def append(self, fill: Fill) -> None:
+        self.fills.append(fill)
+```
+`LimitOrderBook.__init__` accepts `on_fill: Callable[[Fill], None] | None = None`.
+When a fill is generated during matching, call `if self.on_fill: self.on_fill(fill)`.
+The runner wires this at startup: `book = LimitOrderBook(on_fill=tape.append)`.
+Existing Phase 1 tests construct `LimitOrderBook()` with no callback — behaviour unchanged.
+Analytics layers in Phase 6 may inject additional callbacks without touching LOB or agents.
 
 ## Known Design Decisions & Rationale
 - **Integer ticks for prices**: avoids floating-point drift corrupting the LOB sort order
 - **Poisson arrivals for retail**: standard in market microstructure literature (Glosten-Milgrom)
+- **BBO seeded in runner, not agents**: keeps agent logic and tests isolated from bootstrap state
+- **params.yaml from Phase 2**: single source of truth; agents take config dicts, never read files
+- **Tape via callback, not LOB coupling**: LOB stays pure and testable; runner injects logging
 - **Flat vol surface to start**: simplifies Phase 4; surface dynamics added in Phase 6
 - **Single options LOB per series deferred**: Phase 4 uses quote-driven market (dealer quotes on request); full options LOB added only if Phase 5 is stable
 - **No options-on-options**: scope boundary — this simulator covers equity + vanilla options only
