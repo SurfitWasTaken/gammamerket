@@ -10,29 +10,28 @@ the underlying equity limit order book.
 ```
 sim/
 ├── core/
-│   ├── lob.py            # Limit order book engine (price-time priority)
-│   ├── matching.py       # Order matching logic (partial fills, cancellations)
-│   ├── clock.py          # Discrete event scheduler
+│   ├── lob.py            # Limit order book engine (price-time priority) + inline matching
+│   ├── clock.py          # Discrete event scheduler (heapq, Poisson arrivals)
 │   ├── tape.py           # Central fill tape (callback-injected into LOB)
-│   └── events.py         # Event types: OrderSubmit, Fill, Cancel, Quote
+│   └── events.py         # Event types: Order, Fill, Cancel
 ├── agents/
-│   ├── base.py           # Agent base class (perceive → decide → act loop)
+│   ├── base.py           # Agent base class + MarketState snapshot
 │   ├── retail.py         # Noise traders (Poisson arrivals, random direction)
-│   ├── institution.py    # Directional speculators (momentum / mean-reversion)
-│   ├── equity_mm.py      # Equity market maker (inventory-averse quoting)
-│   └── options_mm.py     # Options dealer (BS pricing + delta hedging)
+│   ├── institution.py    # Mean-reverting speculator (OU signal, target position)
+│   ├── equity_mm.py      # [Phase 3] Equity market maker
+│   └── options_mm.py     # [Phase 5] Options dealer
 ├── options/
-│   ├── pricer.py         # Black-Scholes pricing, Greeks (delta, gamma, vega)
-│   ├── surface.py        # Implied vol surface (flat to start, dynamic later)
-│   └── chain.py          # Options chain (strikes, expiries, series management)
+│   ├── pricer.py         # [Phase 4] Black-Scholes pricing + Greeks
+│   ├── surface.py        # [Phase 4] Implied vol surface
+│   └── chain.py          # [Phase 4] Options chain
 ├── analytics/
-│   ├── metrics.py        # Effective spread, depth, volatility, autocorrelation
-│   ├── logger.py         # Event tape logger (every order, fill, quote)
-│   └── viz.py            # Real-time and post-run visualisation
+│   ├── metrics.py        # Pure post-run: returns, autocorrelation, trade sizes
+│   ├── logger.py         # [Phase 6] Event tape logger
+│   └── viz.py            # [Phase 6] Post-run visualisation
 ├── config/
-│   └── params.yaml       # All tunable parameters (arrival rates, risk aversion, etc.)
-├── tests/
-│   └── ...               # Unit tests for LOB, pricer, agent logic
+│   ├── params.yaml       # All tunable parameters
+│   └── loader.py         # YAML loader (single read site)
+├── tests/                # Unit tests + e2e
 ├── run_sim.py            # Entry point
 └── CLAUDE.md             # This file
 ```
@@ -43,8 +42,8 @@ observable experiment before the next adds complexity.
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | LOB Engine | [ ] |
-| 2 | Equity Agents + Basic Microstructure | [ ] |
+| 1 | LOB Engine | [x] |
+| 2 | Equity Agents + Basic Microstructure | [x] |
 | 3 | Equity Market Maker | [ ] |
 | 4 | Options Pricing + Chain | [ ] |
 | 5 | Options Dealer + Delta Hedging | [ ] |
