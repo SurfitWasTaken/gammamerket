@@ -80,6 +80,8 @@ def _build_agents(cfg: dict, rng: np.random.Generator) -> list:
             position_limit=int(inst_cfg["position_limit"]),
             quote_offset_ticks=int(inst_cfg["quote_offset_ticks"]),
             scale=float(inst_cfg["scale"]),
+            signal_price_scale=float(inst_cfg["signal_price_scale"]),
+            initial_price=int(cfg["market"]["initial_price"]),
             rng=rng,
         )
     )

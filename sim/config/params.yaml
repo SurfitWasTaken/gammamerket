@@ -2,8 +2,8 @@ market:
   tick_size: 1
   lot_size: 100
   initial_price: 10000
-  initial_bid_size: 50
-  initial_ask_size: 50
+  initial_bid_size: 200
+  initial_ask_size: 200
   max_steps: 200
   seed: 42
 
@@ -18,7 +18,8 @@ agents:
     arrival_rate: 5.0
     signal_halflife: 30.0
     signal_sigma: 1.0
-    threshold: 0.5
+    threshold: 0.0
     position_limit: 500
     quote_offset_ticks: 1
     scale: 100
+    signal_price_scale: 5

@@ -201,6 +201,9 @@ gammarket LOB REPL  (Phase 1)
   Side, Order             event types
 
 Tip: o = blimit(100); cancel(o)
+
+For the live agent-driven market (retail noise + OU institution),
+run:  python -m sim.agents_repl --viz
 """
 
 

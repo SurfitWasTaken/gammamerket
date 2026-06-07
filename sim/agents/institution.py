@@ -2,9 +2,11 @@
 
 Maintains a mean-reverting signal (Ornstein–Uhlenbeck process anchored
 at zero) and a target position proportional to that signal. When the
-signal magnitude exceeds a threshold, the agent posts a single limit
-order — cancelling any prior resting order first — to trade toward the
-target. The order is capped to respect the position limit.
+target differs from the current position, the agent posts a single
+limit order — anchored to its OU signal around the *initial* price —
+to trade toward the target. The order is only cancelled once it is
+fully filled; partial fills just decrement the tracked remaining
+quantity so the resting surplus is preserved.
 
 Signal dynamics use the exact OU discretisation so behaviour is stable
 even at low Poisson rates:
@@ -12,6 +14,18 @@ even at low Poisson rates:
     s(t+dt) = s(t) * exp(-lambda * dt) + sigma * sqrt((1 - exp(-2*lambda*dt)) / (2*lambda)) * N(0,1)
 
 where `lambda = ln(2) / halflife`.
+
+Posting price:
+
+    base  = initial_price + int(signal * signal_price_scale)
+    BUY   = base + quote_offset_ticks
+    SELL  = base - quote_offset_ticks
+
+Anchoring to `initial_price` (not the current mid) breaks the
+self-referencing loop where the institution would otherwise always
+quote relative to its own resting order and pin the price at the
+seed BBO. The signal-dependent offset is what lets the mid drift
+away from the initial price over time.
 """
 
 from __future__ import annotations
@@ -40,11 +54,16 @@ class Institution(Agent):
         position_limit: Maximum absolute position in lots. Must be
             positive. The agent's resting-order quantity is capped to
             stay within this bound.
-        quote_offset_ticks: Distance (in ticks) from mid at which
-            resting limits are posted.
+        quote_offset_ticks: Distance (in ticks) from the signal-anchored
+            base price at which resting limits are posted.
         scale: Multiplier converting the (unitless) signal to a target
             position in lots: `target = int(signal * scale)`. Must be
             positive.
+        signal_price_scale: Multiplier converting the (unitless) signal
+            to a price offset in ticks. `price_offset = int(signal *
+            signal_price_scale)`. Must be non-negative.
+        initial_price: Anchor price (in ticks) used as the mid reference
+            before the first observation. Must be positive.
         rng: NumPy `Generator` for drawing the OU innovation.
     """
 
@@ -57,6 +76,8 @@ class Institution(Agent):
         position_limit: int,
         quote_offset_ticks: int,
         scale: float,
+        signal_price_scale: float,
+        initial_price: int,
         rng: np.random.Generator,
     ) -> None:
         super().__init__(agent_id)
@@ -72,16 +93,23 @@ class Institution(Agent):
             raise ValueError(f"quote_offset_ticks must be >= 1, got {quote_offset_ticks}")
         if scale <= 0:
             raise ValueError(f"scale must be positive, got {scale}")
+        if signal_price_scale < 0:
+            raise ValueError(f"signal_price_scale must be non-negative, got {signal_price_scale}")
+        if initial_price <= 0:
+            raise ValueError(f"initial_price must be positive, got {initial_price}")
         self.signal_halflife: float = signal_halflife
         self.signal_sigma: float = signal_sigma
         self.threshold: float = threshold
         self.position_limit: int = position_limit
         self.quote_offset_ticks: int = quote_offset_ticks
         self.scale: float = scale
+        self.signal_price_scale: float = signal_price_scale
+        self.initial_price: int = initial_price
         self.rng: np.random.Generator = rng
         self.signal: float = 0.0
         self._last_step_time: Optional[float] = None
         self.resting_order_id: Optional[uuid.UUID] = None
+        self._resting_remaining_qty: int = 0
         self._lam: float = float(np.log(2.0) / signal_halflife)
 
     def _step_signal(self, dt: float) -> None:
@@ -104,6 +132,9 @@ class Institution(Agent):
         self._last_step_time = state.timestamp
         self._step_signal(dt)
 
+        if self.resting_order_id is not None and self._resting_remaining_qty > 0:
+            return actions
+
         if self.resting_order_id is not None:
             actions.append(
                 Cancel(
@@ -113,6 +144,7 @@ class Institution(Agent):
                 )
             )
             self.resting_order_id = None
+            self._resting_remaining_qty = 0
 
         target = int(self.signal * self.scale)
         if target > self.position_limit:
@@ -125,8 +157,6 @@ class Institution(Agent):
             return actions
         if abs(self.signal) <= self.threshold:
             return actions
-        if state.mid is None:
-            return actions
 
         if self.position + diff > self.position_limit:
             diff = self.position_limit - self.position
@@ -136,12 +166,16 @@ class Institution(Agent):
         if qty == 0:
             return actions
 
+        signal_offset = int(round(self.signal * self.signal_price_scale))
+        base = self.initial_price + signal_offset
         if diff > 0:
             side = Side.BUY
-            price = int(state.mid) + self.quote_offset_ticks
+            price = base + self.quote_offset_ticks
         else:
             side = Side.SELL
-            price = int(state.mid) - self.quote_offset_ticks
+            price = base - self.quote_offset_ticks
+        if price <= 0:
+            return actions
 
         order = Order(
             order_id=uuid.uuid4(),
@@ -153,6 +187,7 @@ class Institution(Agent):
         )
         actions.append(order)
         self.resting_order_id = order.order_id
+        self._resting_remaining_qty = qty
         return actions
 
     def on_fills(self, fills: list[Fill]) -> None:
@@ -162,4 +197,7 @@ class Institution(Agent):
                 fill.maker_order_id == self.resting_order_id
                 or fill.taker_order_id == self.resting_order_id
             ):
-                self.resting_order_id = None
+                self._resting_remaining_qty -= fill.qty
+                if self._resting_remaining_qty <= 0:
+                    self.resting_order_id = None
+                    self._resting_remaining_qty = 0

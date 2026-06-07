@@ -148,6 +148,8 @@ def _setup_sim(config: dict) -> None:
             position_limit=int(inst_cfg["position_limit"]),
             quote_offset_ticks=int(inst_cfg["quote_offset_ticks"]),
             scale=float(inst_cfg["scale"]),
+            signal_price_scale=float(inst_cfg["signal_price_scale"]),
+            initial_price=initial_price,
             rng=rng,
         )
     )

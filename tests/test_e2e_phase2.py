@@ -20,8 +20,8 @@ def _default_cfg(max_steps: int = 100) -> dict:
             "tick_size": 1,
             "lot_size": 100,
             "initial_price": 10000,
-            "initial_bid_size": 50,
-            "initial_ask_size": 50,
+            "initial_bid_size": 200,
+            "initial_ask_size": 200,
             "max_steps": max_steps,
             "seed": 42,
         },
@@ -36,10 +36,11 @@ def _default_cfg(max_steps: int = 100) -> dict:
                 "arrival_rate": 5.0,
                 "signal_halflife": 30.0,
                 "signal_sigma": 1.0,
-                "threshold": 0.5,
+                "threshold": 0.0,
                 "position_limit": 500,
                 "quote_offset_ticks": 1,
                 "scale": 100,
+                "signal_price_scale": 5,
             },
         },
     }
@@ -62,6 +63,21 @@ def test_phase2_fill_prices_move_non_trivially() -> None:
     assert prices.max() - prices.min() > 0, "fill prices all identical"
     r = simple_returns(prices)
     assert r.std() > 0
+
+
+def test_phase2_fill_prices_drift_beyond_seed_bbo() -> None:
+    """The institution's signal-anchored quoting must let the price
+    move beyond the ±1-tick seed BBO. The old behaviour pinned every
+    fill to {9999, 10001}; this test guards against that regression."""
+    result = run(_default_cfg(max_steps=300))
+    prices = fill_prices(result["tape"].fills)
+    seed_bbo = {9999, 10001}
+    unique_prices = set(int(p) for p in prices)
+    drifted = unique_prices - seed_bbo
+    assert len(drifted) >= 2, (
+        f"expected price to drift beyond seed BBO; "
+        f"unique fills={sorted(unique_prices)}"
+    )
 
 
 def test_phase2_agents_all_instantiated() -> None:
