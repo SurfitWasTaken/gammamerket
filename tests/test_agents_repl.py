@@ -10,6 +10,8 @@ always see the current value, not the value at import time.
 
 from __future__ import annotations
 
+import json
+import threading
 import uuid
 
 import sim.agents_repl as repl
@@ -138,3 +140,60 @@ def test_manual_order_after_setup_does_not_crash() -> None:
     new_ask = seed_ask + 50
     repl.slimit(new_ask, 2)
     assert repl.book.best_ask() == seed_ask
+
+
+def test_snapshot_after_reset_is_valid_json_with_bbo(tmp_path, monkeypatch) -> None:
+    """After reset, the snapshot file must be valid JSON and contain
+    the freshly-seeded BBO (the viz reads this file)."""
+    monkeypatch.setattr(repl, "SNAPSHOT_PATH", tmp_path / "snap.json")
+    monkeypatch.setattr(repl, "viz_process", object())
+
+    repl._setup_sim(_cfg())
+    repl.run(20)
+    repl._setup_sim(_cfg())
+
+    payload = (tmp_path / "snap.json").read_text()
+    data = json.loads(payload)
+    assert data["best_bid"] == 9999
+    assert data["best_ask"] == 10001
+    assert data["bids"]["9999"] > 0
+    assert data["asks"]["10001"] > 0
+    assert data["fills"] == []
+
+
+def test_snapshot_writes_are_atomic_under_concurrent_reads(
+    tmp_path, monkeypatch
+) -> None:
+    """A concurrent reader should NEVER see a half-written file. The
+    atomic write (tmp + replace) guarantees readers see either the old
+    snapshot or the new one, never a corrupt intermediate state."""
+    monkeypatch.setattr(repl, "SNAPSHOT_PATH", tmp_path / "snap.json")
+    monkeypatch.setattr(repl, "viz_process", object())
+
+    repl._setup_sim(_cfg())
+    repl.run(10)
+
+    stop = threading.Event()
+    parse_errors: list[str] = []
+
+    def reader() -> None:
+        while not stop.is_set():
+            try:
+                raw = (tmp_path / "snap.json").read_text()
+                json.loads(raw)
+            except json.JSONDecodeError as e:
+                parse_errors.append(str(e))
+            except OSError:
+                pass
+
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
+
+    for _ in range(40):
+        repl._setup_sim(_cfg())
+        repl.run(5)
+
+    stop.set()
+    t.join(timeout=2.0)
+
+    assert parse_errors == [], f"reader saw {len(parse_errors)} corrupt snapshots"

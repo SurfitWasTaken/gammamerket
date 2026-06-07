@@ -94,9 +94,13 @@ def _write_snapshot() -> None:
     if viz_process is None:
         return
     try:
-        SNAPSHOT_PATH.write_text(
-            json.dumps(book_snapshot(book, _fills_view, _now()))
-        )
+        payload = json.dumps(book_snapshot(book, _fills_view, _now()))
+    except (TypeError, ValueError):
+        return
+    try:
+        tmp = SNAPSHOT_PATH.with_suffix(SNAPSHOT_PATH.suffix + ".tmp")
+        tmp.write_text(payload)
+        tmp.replace(SNAPSHOT_PATH)
     except OSError:
         pass
 

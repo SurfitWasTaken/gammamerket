@@ -121,6 +121,8 @@ def run_viz(snapshot_path: os.PathLike, refresh_hz: float = 5.0) -> None:
                     fig.canvas.flush_events()
                     last_mtime = mtime
                     stale = 0
+                else:
+                    last_mtime = mtime
             if path.exists() and last_mtime == 0:
                 stale += 1
                 if stale > 50:
