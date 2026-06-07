@@ -1,12 +1,23 @@
 """Interactive REPL for poking at the LOB.
 
-Run with: `python sim/repl.py`
+Run with: `python -m sim.repl`
+
+Direct invocation `python sim/repl.py` also works (path bootstrap
+below ensures `sim` is importable even when run by file path).
 
 Once inside, type `help()` for a command list. The `book` global is a
 fresh `LimitOrderBook` ready for orders.
 """
 
 from __future__ import annotations
+
+import sys
+import pathlib
+
+if __package__ in (None, ""):
+    _root = pathlib.Path(__file__).resolve().parent.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import code
 import uuid
@@ -93,6 +104,8 @@ def help() -> None:
 
 _BANNER = """
 gammarket LOB REPL  (Phase 1)
+
+  Start: python -m sim.repl  (or: python sim/repl.py)
 
   blimit(price, qty=1)    submit BUY limit, returns the Order
   slimit(price, qty=1)    submit SELL limit, returns the Order
