@@ -11,9 +11,9 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
-from sim.core.events import Fill, Order, Side
+from sim.core.events import Cancel, Fill, Order, Side
 
 
 @dataclass(frozen=True)
@@ -67,12 +67,13 @@ class Agent(ABC):
         self.open_order_ids = set()
 
     @abstractmethod
-    def step(self, state: MarketState) -> list[Order]:
-        """Perceive the state, decide, and return orders to submit.
+    def step(self, state: MarketState) -> list[Union[Order, Cancel]]:
+        """Perceive the state, decide, and return actions to take.
 
-        Returns an empty list if the agent chooses not to act this
-        step. Returned orders are submitted to the LOB in the order
-        given.
+        Each action is either an `Order` (to be submitted to the LOB)
+        or a `Cancel` (to remove a previously-submitted resting order).
+        Actions are processed by the clock in the order returned. The
+        combined list may be empty.
         """
 
     def on_fills(self, fills: list[Fill]) -> None:

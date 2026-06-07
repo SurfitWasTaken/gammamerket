@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from sim.agents.base import Agent, MarketState
+from sim.core.events import Cancel, Order
 from sim.core.lob import LimitOrderBook
 from sim.core.tape import Tape
 
@@ -83,22 +84,26 @@ class Clock:
         self.step_count += 1
         agent = self.agents[event.agent_id]
         state = self._build_state(agent)
-        orders = agent.step(state)
-        for order in orders:
-            agent.open_order_ids.add(order.order_id)
-            if order.price == 0:
-                fills = self.book.submit_market(order)
-            else:
-                fills = self.book.submit_limit(order)
-            if not fills:
-                continue
-            agent.on_fills(fills)
-            for fill in fills:
-                if fill.maker_agent_id == fill.taker_agent_id:
+        actions = agent.step(state)
+        for action in actions:
+            if isinstance(action, Order):
+                agent.open_order_ids.add(action.order_id)
+                if action.price == 0:
+                    fills = self.book.submit_market(action)
+                else:
+                    fills = self.book.submit_limit(action)
+                if not fills:
                     continue
-                maker_agent = self.agents.get(fill.maker_agent_id)
-                if maker_agent is not None and maker_agent is not agent:
-                    maker_agent.on_fills([fill])
+                agent.on_fills(fills)
+                for fill in fills:
+                    if fill.maker_agent_id == fill.taker_agent_id:
+                        continue
+                    maker_agent = self.agents.get(fill.maker_agent_id)
+                    if maker_agent is not None and maker_agent is not agent:
+                        maker_agent.on_fills([fill])
+            elif isinstance(action, Cancel):
+                self.book.cancel(action.order_id)
+                agent.open_order_ids.discard(action.order_id)
         rate = self.rates[event.agent_id]
         self._schedule_next(agent, dt=self.rng.exponential(1.0 / rate))
         return self.now
