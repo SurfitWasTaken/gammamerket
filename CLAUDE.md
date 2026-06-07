@@ -160,9 +160,9 @@ Run all tests after every session: `pytest tests/ -v`
 ## Session Workflow (how to work with Claude)
 1. **State the phase** at the start of every session: "We are working on Phase N"
 2. **Paste the failing test or specific error** — don't describe it, paste it
-3. **One module at a time** — complete and test one file before moving to the next
+3. **One module at a time** — complete and test one file before moving on to the next
 4. **After each module**, run: `python -m pytest tests/test_<module>.py -v`
-5. **Commit checkpoints** — after each passing module: `git add -A && git commit -m "Phase N: <module> complete"`
+5. **Auto-commit checkpoints** — after each green test run, the assistant commits automatically: `git add -A && git commit -m "Phase N: <module> complete"`. No user prompt required. Phase 1 is committed retroactively on the first auto-commit cycle.
 
 ## Known Design Decisions & Rationale
 - **Integer ticks for prices**: avoids floating-point drift corrupting the LOB sort order

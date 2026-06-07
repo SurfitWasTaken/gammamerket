@@ -1,0 +1,130 @@
+"""Interactive REPL for poking at the LOB.
+
+Run with: `python sim/repl.py`
+
+Once inside, type `help()` for a command list. The `book` global is a
+fresh `LimitOrderBook` ready for orders.
+"""
+
+from __future__ import annotations
+
+import code
+import uuid
+
+from sim.core.events import Order, Side
+from sim.core.lob import LimitOrderBook
+
+
+book: LimitOrderBook = LimitOrderBook(tick_size=1)
+_clock: list[int] = [0]
+
+
+def _ts() -> float:
+    _clock[0] += 1
+    return float(_clock[0])
+
+
+def _emit(fills: list) -> None:
+    for f in fills:
+        side = f.aggressor_side.value
+        print(f"  FILL {f.qty:>4} @ {f.price:<6} ({side})")
+
+
+def blimit(price: int, qty: int = 1, agent: str = "you") -> Order:
+    """Submit a BUY limit order. Returns the Order."""
+    o = Order(uuid.uuid4(), agent, Side.BUY, int(price), int(qty), _ts())
+    _emit(book.submit_limit(o))
+    return o
+
+
+def slimit(price: int, qty: int = 1, agent: str = "you") -> Order:
+    """Submit a SELL limit order. Returns the Order."""
+    o = Order(uuid.uuid4(), agent, Side.SELL, int(price), int(qty), _ts())
+    _emit(book.submit_limit(o))
+    return o
+
+
+def bmarket(qty: int = 1, agent: str = "you") -> Order:
+    """Submit a BUY market order. Returns the Order."""
+    o = Order(uuid.uuid4(), agent, Side.BUY, 0, int(qty), _ts())
+    _emit(book.submit_market(o))
+    return o
+
+
+def smarket(qty: int = 1, agent: str = "you") -> Order:
+    """Submit a SELL market order. Returns the Order."""
+    o = Order(uuid.uuid4(), agent, Side.SELL, 0, int(qty), _ts())
+    _emit(book.submit_market(o))
+    return o
+
+
+def cancel(order) -> bool:
+    """Cancel an order by passing the Order object. Returns True if removed."""
+    return book.cancel(order.order_id)
+
+
+def reset() -> None:
+    """Drop all resting orders and reset the clock."""
+    global book
+    book = LimitOrderBook(tick_size=1)
+    _clock[0] = 0
+    print("  (book reset)")
+
+
+def show() -> None:
+    """Print a snapshot of book state: best bid/ask, mid, spread, full depth."""
+    print("--- LOB ---")
+    print(f"  best_bid={book.best_bid()}  best_ask={book.best_ask()}  "
+          f"spread={book.spread()}  mid={book.mid()}")
+    print(f"  resting orders: {len(book)}")
+    if book.asks:
+        print("  asks (worst -> best):")
+        for p in reversed(book.asks.keys()):
+            print(f"    ASK {p:>6}  qty={book.depth(Side.SELL, p)}")
+    if book.bids:
+        print("  bids (best -> worst):")
+        for p in reversed(book.bids.keys()):
+            print(f"    BID {p:>6}  qty={book.depth(Side.BUY, p)}")
+
+
+def help() -> None:
+    print(_BANNER)
+
+
+_BANNER = """
+gammarket LOB REPL  (Phase 1)
+
+  blimit(price, qty=1)    submit BUY limit, returns the Order
+  slimit(price, qty=1)    submit SELL limit, returns the Order
+  bmarket(qty=1)          submit BUY market
+  smarket(qty=1)         submit SELL market
+  cancel(order)           cancel a resting Order
+  show()                  print full book state
+  reset()                 wipe the book and start over
+  book                    the LimitOrderBook instance
+  Side, Order             event types
+
+Tip: o = blimit(100); cancel(o)
+"""
+
+
+def main() -> None:
+    print(_BANNER)
+    namespace = {
+        "book": book,
+        "blimit": blimit,
+        "slimit": slimit,
+        "bmarket": bmarket,
+        "smarket": smarket,
+        "cancel": cancel,
+        "show": show,
+        "reset": reset,
+        "help": help,
+        "Side": Side,
+        "Order": Order,
+    }
+    code.interact(banner="", local=namespace, exitmsg="bye")
+
+
+if __name__ == "__main__":
+    main()
