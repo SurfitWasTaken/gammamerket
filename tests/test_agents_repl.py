@@ -197,3 +197,29 @@ def test_snapshot_writes_are_atomic_under_concurrent_reads(
     t.join(timeout=2.0)
 
     assert parse_errors == [], f"reader saw {len(parse_errors)} corrupt snapshots"
+
+
+def test_viz_subprocess_does_not_inherit_stdin(monkeypatch) -> None:
+    """The viz subprocess must not share the REPL's stdin — if it
+    does, the macosx matplotlib backend reads from the terminal and
+    the REPL gets EOF, exiting immediately."""
+    import subprocess
+    from unittest.mock import patch
+
+    captured: dict = {}
+    real_popen = subprocess.Popen
+
+    def spy_popen(*args, **kwargs):
+        captured["stdin"] = kwargs.get("stdin", "default")
+        captured["stdout"] = kwargs.get("stdout", "default")
+        captured["stderr"] = kwargs.get("stderr", "default")
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(repl.subprocess, "Popen", spy_popen)
+    repl.viz_off()
+    repl.viz_on()
+    repl.viz_off()
+
+    assert captured["stdin"] is subprocess.DEVNULL, (
+        f"viz subprocess must use stdin=DEVNULL, got {captured['stdin']!r}"
+    )

@@ -308,6 +308,7 @@ def viz_on() -> None:
     _write_snapshot()
     viz_process = subprocess.Popen(
         [sys.executable, "-m", "sim.viz", "--snapshot", str(SNAPSHOT_PATH)],
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
