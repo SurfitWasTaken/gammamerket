@@ -113,9 +113,10 @@ def cancel(order) -> bool:
 
 
 def reset() -> None:
-    """Drop all resting orders, fill history, and reset the clock."""
-    global book
-    book = LimitOrderBook(tick_size=1)
+    """Drop all resting orders, fill history, and reset the clock.
+    The book instance itself is preserved so the REPL namespace and
+    the module global stay in sync (no rebind)."""
+    book.clear()
     _clock[0] = 0
     _fill_history.clear()
     _write_snapshot()

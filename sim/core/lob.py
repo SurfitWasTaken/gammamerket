@@ -80,6 +80,13 @@ class LimitOrderBook:
             f"n_orders={len(self)}>"
         )
 
+    def clear(self) -> None:
+        """Remove all resting orders. The instance itself is preserved
+        (callers holding a reference still see the same object)."""
+        self.bids.clear()
+        self.asks.clear()
+        self._orders.clear()
+
     def best_bid(self) -> Optional[int]:
         if not self.bids:
             return None

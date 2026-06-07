@@ -276,3 +276,32 @@ def test_book_callable_returns_summary_with_orders(book, make) -> None:
     assert "spread=1" in s
     assert "mid=100.5" in s
     assert "n_orders=2" in s
+
+
+def test_clear_empties_book_but_preserves_instance(book, make) -> None:
+    book.submit_limit(make.limit(Side.BUY, 100, qty=3))
+    book.submit_limit(make.limit(Side.SELL, 101, qty=2))
+    assert len(book) == 2
+
+    book.clear()
+
+    assert len(book) == 0
+    assert book.best_bid() is None
+    assert book.best_ask() is None
+    assert "n_orders=0" in book()
+
+
+def test_clear_preserves_object_identity(book, make) -> None:
+    book.submit_limit(make.limit(Side.BUY, 100, qty=1))
+    identity_before = id(book)
+    book.clear()
+    assert id(book) == identity_before
+
+
+def test_book_after_clear_accepts_new_orders(book, make) -> None:
+    book.submit_limit(make.limit(Side.BUY, 100, qty=3))
+    book.clear()
+    book.submit_limit(make.limit(Side.SELL, 200, qty=5))
+    assert book.best_bid() is None
+    assert book.best_ask() == 200
+    assert len(book) == 1
