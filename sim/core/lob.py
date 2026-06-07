@@ -11,7 +11,7 @@ from __future__ import annotations
 import uuid
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 from sortedcontainers import SortedDict
 
@@ -48,6 +48,11 @@ class LimitOrderBook:
     Args:
         tick_size: Minimum price increment in ticks. Limit order prices
             must be a positive multiple of this value.
+        on_fill: Optional callback invoked once per generated fill
+            (after the fill is appended to the return list of the
+            `submit_*` method). Used by the runner to wire the central
+            `Tape` without coupling the LOB to analytics. Defaults to
+            None, in which case no callback is invoked.
 
     The book enforces:
         * Positive integer prices, positive integer quantities.
@@ -56,13 +61,18 @@ class LimitOrderBook:
           on tick grounds).
     """
 
-    def __init__(self, tick_size: int = 1) -> None:
+    def __init__(
+        self,
+        tick_size: int = 1,
+        on_fill: Optional[Callable[[Fill], None]] = None,
+    ) -> None:
         if tick_size <= 0:
             raise ValueError(f"tick_size must be positive, got {tick_size}")
         self._tick_size: int = tick_size
         self.bids: SortedDict = SortedDict()
         self.asks: SortedDict = SortedDict()
         self._orders: dict[uuid.UUID, _RestingOrder] = {}
+        self._on_fill: Optional[Callable[[Fill], None]] = on_fill
 
     @property
     def tick_size(self) -> int:
@@ -222,16 +232,17 @@ class LimitOrderBook:
             while remaining > 0 and level:
                 maker = level[0]
                 trade_qty = min(maker.remaining_qty, remaining)
-                fills.append(
-                    Fill(
-                        taker_order_id=taker.order_id,
-                        maker_order_id=maker.order_id,
-                        aggressor_side=taker.side,
-                        price=maker.price,
-                        qty=trade_qty,
-                        timestamp=taker.timestamp,
-                    )
+                fill = Fill(
+                    taker_order_id=taker.order_id,
+                    maker_order_id=maker.order_id,
+                    aggressor_side=taker.side,
+                    price=maker.price,
+                    qty=trade_qty,
+                    timestamp=taker.timestamp,
                 )
+                fills.append(fill)
+                if self._on_fill is not None:
+                    self._on_fill(fill)
                 maker.remaining_qty -= trade_qty
                 remaining -= trade_qty
                 if maker.remaining_qty == 0:

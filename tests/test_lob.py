@@ -305,3 +305,33 @@ def test_book_after_clear_accepts_new_orders(book, make) -> None:
     assert book.best_bid() is None
     assert book.best_ask() == 200
     assert len(book) == 1
+
+
+def test_on_fill_callback_invoked_per_fill(book, make) -> None:
+    captured: list = []
+    cb = LimitOrderBook(tick_size=1, on_fill=captured.append)
+    cb.submit_limit(make.limit(Side.SELL, 100, qty=1, agent="s1"))
+    cb.submit_limit(make.limit(Side.SELL, 101, qty=2, agent="s2"))
+
+    fills = cb.submit_market(make.market(Side.BUY, qty=3))
+
+    assert len(fills) == 2
+    assert len(captured) == 2
+    assert [(f.price, f.qty) for f in captured] == [(100, 1), (101, 2)]
+
+
+def test_no_on_fill_callback_runs_without_error(book, make) -> None:
+    fills = book.submit_limit(make.limit(Side.SELL, 100, qty=1))
+    assert len(fills) == 0
+    fills = book.submit_market(make.market(Side.BUY, qty=1))
+    assert len(fills) == 1
+    assert fills[0].price == 100
+
+
+def test_on_fill_callback_receives_frozen_fills_independent_of_return(book, make) -> None:
+    captured: list = []
+    cb = LimitOrderBook(tick_size=1, on_fill=captured.append)
+    cb.submit_limit(make.limit(Side.SELL, 100, qty=1))
+    fills = cb.submit_market(make.market(Side.BUY, qty=1))
+    assert fills[0] is captured[0]
+    assert fills[0] == captured[0]
