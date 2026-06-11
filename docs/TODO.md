@@ -22,9 +22,9 @@ right phase. `[~]` = in progress. Detail for Phase 4 lives in
 - [x] commit: "Phase 4: pricer complete"
 
 **Step 2 — `sim/options/surface.py`**
-- [ ] `FlatVolSurface` with `vol(strike, expiry)` interface
-- [ ] `tests/test_surface.py`
-- [ ] commit: "Phase 4: surface complete"
+- [x] `FlatVolSurface` with `vol(strike, expiry)` interface
+- [x] `tests/test_surface.py`
+- [x] commit: "Phase 4: surface complete"
 
 **Step 3 — `sim/options/chain.py`**
 - [ ] `OptionSeries` dataclass + `build_chain(...)`
