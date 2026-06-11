@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Union
 
 from sim.core.events import Cancel, Fill, Order, Side
@@ -32,6 +32,8 @@ class MarketState:
         last_fill_price: Price of the most recent fill, or None.
         own_position: This agent's net position in lots.
         timestamp: Simulation time in minutes (clock unit).
+        rolling_vol_bps: Recent return volatility in basis points of mid,
+            or None during warm-up.
     """
 
     best_bid: Optional[int]
@@ -40,6 +42,7 @@ class MarketState:
     last_fill_price: Optional[int]
     own_position: int
     timestamp: float
+    rolling_vol_bps: Optional[float] = None
 
 
 class Agent(ABC):
@@ -58,8 +61,8 @@ class Agent(ABC):
     """
 
     agent_id: str
-    position: int = 0
-    open_order_ids: set[uuid.UUID] = field(default_factory=set)
+    position: int
+    open_order_ids: set[uuid.UUID]
 
     def __init__(self, agent_id: str) -> None:
         self.agent_id = agent_id

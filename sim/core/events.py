@@ -35,11 +35,15 @@ class Order:
         order_id: Unique identifier (uuid4).
         agent_id: Submitting agent's identifier.
         side: BUY or SELL.
-        price: Limit price in integer ticks. Ignored for market orders
-            that are later created internally from a market sweep; for
-            submitted market orders the price field is unused.
+        price: Limit price in integer ticks. Must be a positive multiple
+            of the book's tick size for limit orders. Unused when
+            `is_market` is True (the sweep ignores it).
         qty: Quantity in integer lots. Must be positive.
         timestamp: Caller-supplied event time (used for time priority).
+        is_market: True for a market order (sweeps the opposite side and
+            ignores `price`); False (default) for a resting limit order.
+            The clock routes on this flag, not on a `price == 0`
+            sentinel, so a limit order at any price is unambiguous.
     """
 
     order_id: uuid.UUID
@@ -48,6 +52,7 @@ class Order:
     price: int
     qty: int
     timestamp: float
+    is_market: bool = False
 
 
 @dataclass(frozen=True)

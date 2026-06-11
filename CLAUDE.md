@@ -7,34 +7,48 @@ culminating in a full delta/gamma hedging feedback loop between an options deale
 the underlying equity limit order book.
 
 ## Architecture Overview
+Legend: `[x]` exists on disk today (end of Phase 3); `[ ]` planned for a later
+phase and not yet created. Keep this tree in sync with reality — do not list a
+module here until it is committed.
+
 ```
 sim/
 ├── core/
-│   ├── lob.py            # Limit order book engine (price-time priority) + inline matching
-│   ├── clock.py          # Discrete event scheduler (heapq, Poisson arrivals)
-│   ├── tape.py           # Central fill tape (callback-injected into LOB)
-│   └── events.py         # Event types: Order, Fill, Cancel
+│   ├── lob.py            [x] Limit order book engine (price-time priority).
+│   │                         Matching lives INSIDE lob.py (_sweep); there is no
+│   │                         separate matching.py.
+│   ├── clock.py          [x] Discrete event scheduler + MarketState builder
+│   ├── tape.py           [x] Central fill tape (callback-injected into LOB)
+│   └── events.py         [x] Event types: Order, Fill, Cancel, Side
 ├── agents/
-│   ├── base.py           # Agent base class + MarketState snapshot
-│   ├── retail.py         # Noise traders (Poisson arrivals, random direction)
-│   ├── institution.py    # Mean-reverting speculator (OU signal, target position)
-│   ├── equity_mm.py      # [Phase 3] Equity market maker
-│   └── options_mm.py     # [Phase 5] Options dealer
-├── options/
-│   ├── pricer.py         # [Phase 4] Black-Scholes pricing + Greeks
-│   ├── surface.py        # [Phase 4] Implied vol surface
-│   └── chain.py          # [Phase 4] Options chain
+│   ├── base.py           [x] Agent base class + MarketState dataclass
+│   ├── retail.py         [x] Noise traders (Poisson arrivals, market orders)
+│   ├── institution.py    [x] Mean-reverting (OU-signal) limit speculator
+│   ├── equity_mm.py      [x] Equity market maker (inventory + vol-aware quoting)
+│   └── options_mm.py     [ ] Options dealer (BS pricing + delta hedging) — Phase 5
+├── options/              [ ] entire package — Phase 4
+│   ├── pricer.py         [ ] Black-Scholes pricing, Greeks (delta, gamma, vega)
+│   ├── surface.py        [ ] Implied vol surface (flat to start, dynamic later)
+│   └── chain.py          [ ] Options chain (strikes, expiries, series management)
 ├── analytics/
-│   ├── metrics.py        # Pure post-run: returns, autocorrelation, trade sizes
-│   ├── logger.py         # [Phase 6] Event tape logger
-│   └── viz.py            # [Phase 6] Post-run visualisation
+│   └── metrics.py        [x] returns, autocorrelation, trade sizes (NumPy-only).
+│                             (No logger.py yet — the Tape is the fill log.
+│                             Effective spread/depth/vol metrics are Phase 6.)
 ├── config/
-│   ├── params.yaml       # All tunable parameters
-│   └── loader.py         # YAML loader (single read site)
-├── tests/                # Unit tests + e2e
-├── run_sim.py            # Entry point
-└── CLAUDE.md             # This file
+│   ├── params.yaml       [x] All tunable parameters
+│   └── loader.py         [x] Single YAML read site (load_config)
+├── viz.py                [x] Live matplotlib LOB viz (dev tool, subprocess)
+├── snapshot.py           [x] Pure LOB-state serialization for viz IPC (dev tool)
+├── repl.py               [x] Interactive LOB REPL (dev tool)
+├── agents_repl.py        [x] Agent-driven live REPL with viz (dev tool)
+tests/                    [x] 141 passing tests (LOB, agents, clock, e2e, tooling)
+run_sim.py                [x] Phase 3 entry point
+CLAUDE.md                 [x] This file
 ```
+
+Note: `viz.py`, `snapshot.py`, `repl.py`, `agents_repl.py` are developer tooling
+that live at the `sim/` top level, NOT under `analytics/`. They are outside the
+phase contracts and are not load-bearing for the simulation itself.
 
 ## Build Phases
 The project is structured as six incremental phases. Each phase produces a working,
@@ -49,7 +63,77 @@ observable experiment before the next adds complexity.
 | 5 | Options Dealer + Delta Hedging | [ ] |
 | 6 | Calibration, Analytics, Full Run | [ ] |
 
+**Current position (2026-06-10):** Phases 1–3 complete; all 141 tests pass
+(`.venv/bin/python -m pytest tests/ -q`). The Phase 3 Audit backlog has been
+**cleared** in a dedicated cleanup commit (see below). Phase 4 (Options Pricing +
+Chain) has **not** started — no `options/` package exists yet, but the
+correctness blockers that fed into it (vol baseline, MM P&L) are now resolved.
+
 Update the Status column as phases complete.
+
+## Phase 3 Audit (2026-06-09) — Resolved 2026-06-10
+A full line-by-line review of every committed `.py` (excluding dev tooling) was
+run at the close of Phase 3. Every item below has since been cleared; this
+section is kept as a record of what changed and why, not an open backlog.
+
+### Scorecard (out of 10) — post-cleanup
+| Dimension | Score | One-line justification |
+|-----------|:----:|------------------------|
+| **Logical consistency** | **9.0** | equity_mm now matches its spec (rolling-median vol baseline, party-to-fill P&L); dead branches and the dead scheduling API are gone. |
+| **Elegant / realistic solutions** | **8.5** | LOB (SortedDict+deque+callback tape), frozen events, and the OU institution remain elegant; the vol no-op round-trip and the `price==0` sentinel have been removed. |
+| **Per module** | | |
+| `core/lob.py` | 9.0 | Clean price-time priority, in-place partial fills, immutable `Order` + `_with_qty`. Market-order surplus-rest behavior is unusual but documented. |
+| `core/events.py` | 9.0 | Frozen dataclasses, good docstrings. Market orders now carry an explicit `is_market` flag (documented), not a `price==0` convention. |
+| `core/tape.py` | 9.0 | Tiny, single-purpose, exactly as specced. |
+| `core/clock.py` | 9.0 | heapq scheduler + correct fill routing; vol is now computed directly in bps and routing keys on `is_market`. |
+| `agents/base.py` | 8.5 | Centralised position tracking; state initialised only in `__init__` (no `dataclasses.field()` on a non-dataclass). |
+| `agents/retail.py` | 8.5 | Clean Poisson/geometric noise trader; emits explicit market orders. |
+| `agents/institution.py` | 8.5 | Exact OU discretisation, signal-anchored pricing, partial-fill preservation — the most realistic agent. |
+| `agents/equity_mm.py` | 8.5 | Spec-aligned vol baseline, correct taker/maker P&L, no-reference-price guard, no dead scheduling API. |
+| `analytics/metrics.py` | 9.0 | Pure NumPy, correct, well-edge-cased. |
+| `config/loader.py` | 9.0 | Single read site, good errors. |
+| `run_sim.py` | 8.0 | Clear wiring; retains the `equity_mm`/`equity_mms` dual-path (see P2-2 below). |
+
+### Resolution log
+**P0-1 — vol baseline now matches spec** (`equity_mm.py`). The MM keeps a
+`_vol_history` of observed `rolling_vol_bps`; the baseline is the config seed
+during warm-up and the **median of all observed readings** once `vol_window` of
+them have accumulated. The 2-point `median([baseline, rolling])` blend, the
+unreachable `else` branch, and `_vol_initialized` are gone. Code and the
+"Vol-Adjusted Spread" contract below now agree.
+
+**P0-2 — MM P&L counts every fill it is party to** (`equity_mm.on_fills`). Cash
+flow updates for taker *and* maker fills, signed by whether the MM bought or
+sold, so an inventory-skewed marketable quote no longer corrupts `total_pnl`.
+
+**P1-1 — clock vol no-op collapsed** (`clock.py`). Returns are already fractional,
+so `rolling_vol_bps = std(returns) * 1e4` directly; the `*mid … /mid` round-trip
+is deleted (identical numeric output).
+
+**P1-2 — base.py** initialises `position`/`open_order_ids` only in `__init__`;
+the `dataclasses.field()` import/usage on the non-dataclass `Agent` is removed.
+
+**P1-3 — explicit order type.** `Order` carries `is_market: bool = False`
+(documented in `events.py`); the Clock routes on `action.is_market`, and Retail
+sets it. The `price==0` market-order sentinel no longer drives control flow.
+
+**P1-4 — dead scheduling API removed** (`equity_mm.py`). `schedule_next`,
+`next_event_time`, and `_next_event_time` are deleted (the Clock owns
+scheduling); the two unit tests that pinned them were removed.
+
+**P1-5 — no-reference-price guard** (`equity_mm.step`). When both `mid` and
+`last_fill_price` are None the MM returns `[]` instead of quoting around a 0.0
+mid (which produced a negative bid and a LOB `ValueError`).
+
+**P2-1 — Parameters Reference** block below updated to integer ticks.
+
+**P2-2 — `equity_mm`/`equity_mms` shim intentionally retained.** The frozen
+`test_e2e_phase2.py` passes config under the singular `equity_mm` key, so
+`run_sim.py` still accepts it. The shim cannot be dropped without modifying a
+frozen test; revisit only if that test is ever unfrozen.
+
+**P2-3 — duplicate bookkeeping removed.** `equity_mm` no longer re-adds quote
+`order_id`s to `open_order_ids`; the Clock is the sole owner.
 
 ## Coding Standards
 
@@ -113,46 +197,69 @@ After every options fill:
 → This feedback loop is the core experiment
 
 ## Parameters Reference (params.yaml keys)
+> `sim/config/params.yaml` is the single source of truth. The Phase 3 keys below
+> mirror the live file (integer ticks, `equity_mms` list). The `options_mm` /
+> `options` blocks are **forward-looking** — those keys do not exist yet and land
+> with Phase 4/5.
 ```yaml
+# --- live today (Phase 1–3) ---
 market:
-  tick_size: 1
+  tick_size: 1            # integer ticks; no decimal prices in the LOB
   lot_size: 100
-  initial_price: 10000
+  initial_price: 10000    # ticks
   initial_bid_size: 200
   initial_ask_size: 200
-  max_steps: 200
+  max_steps: 200          # event count, not trading days
   seed: 42
+  vol_window: 20          # fills used for rolling-vol (clock + MM baseline)
 
 agents:
   retail:
     n_agents: 10
-    arrival_rate: 10.0
-    order_size_mean: 2
-    direction_bias: 0.0
+    arrival_rate: 10.0     # orders per minute (Poisson lambda)
+    order_size_mean: 2     # lots
+    direction_bias: 0.0    # 0 = perfectly random
   institution:
     arrival_rate: 5.0
-    signal_halflife: 30.0
+    signal_halflife: 30.0  # minutes
     signal_sigma: 1.0
     threshold: 0.0
-    position_limit: 500
+    position_limit: 500    # lots
     quote_offset_ticks: 1
     scale: 100
     signal_price_scale: 5
-  equity_mm:
-    arrival_rate: 20.0
-    spread_target: 4
-    inventory_limit: 2000
-    risk_aversion: 0.1
-    quote_size: 5
-    max_orders_per_side: 1
+  equity_mms:              # list form; each entry has an explicit id
+    - id: "mm_aggressive"
+      arrival_rate: 100.0
+      spread_target: 3     # ticks
+      inventory_limit: 2000
+      risk_aversion: 0.05
+      quote_size: 5
+      max_orders_per_side: 1
+      vol_window: 20
+      vol_multiplier: 2.0
+      baseline_vol_bps: 5.0
+    - id: "mm_conservative"
+      arrival_rate: 100.0
+      spread_target: 5
+      inventory_limit: 2000
+      risk_aversion: 0.1
+      quote_size: 5
+      max_orders_per_side: 1
+      vol_window: 20
+      vol_multiplier: 2.0
+      baseline_vol_bps: 5.0
+
+# --- forward-looking (Phase 4/5; keys not yet present) ---
+agents:
   options_mm:
-    vol_estimate: 0.20
-    spread_vols: 2.0
-    delta_hedge_threshold: 0.05
+    vol_estimate: 0.20     # annualised σ for BS pricing
+    spread_vols: 2.0       # bid/ask quoted ± 2 vol points
+    delta_hedge_threshold: 0.05  # re-hedge if |delta| > 0.05
     gamma_limit: 500
 
 options:
-  strikes: [95, 97.5, 100, 102.5, 105]
+  strikes: [95, 97.5, 100, 102.5, 105]  # relative to spot
   expiries_days: [7, 14, 30]
   risk_free_rate: 0.05
 ```
@@ -174,6 +281,46 @@ Run all tests after every session: `pytest tests/ -v`
 3. **One module at a time** — complete and test one file before moving to the next
 4. **After each module**, run: `python -m pytest tests/test_<module>.py -v`
 5. **Commit checkpoints** — after each passing module: `git add -A && git commit -m "Phase N: <module> complete"`
+
+## Phase 3 Implementation Contracts
+
+### Vol-Adjusted Spread — units and baseline
+- `MarketState` carries `rolling_vol_bps: float | None` (volatility in basis-points, computed from fractional fill-to-fill returns, not raw returns)
+- `rolling_vol_bps` is computed in `Clock._build_state()` (`std(returns) * 1e4`), never inside the MM agent
+- `Clock.__init__` receives `tape: Tape` explicitly — no global tape access
+- `baseline_vol_bps` is a config seed value used during warm-up; once `vol_window` readings have accumulated the baseline switches to the **median of the rolling-vol series so far**
+  - ✅ **Resolved (Audit P0-1):** the MM keeps `_vol_history` and takes its median once `len(_vol_history) >= vol_window`; before that it uses the config `baseline_vol_bps`. Code and spec now agree.
+- Effective spread formula — **canonical form (matches code + the vol-spread test below):**
+  `effective_spread = max(1, int(round(spread_target * (1 + vol_multiplier * (vol_ratio - 1)))))`
+  where `vol_ratio = rolling_vol_bps / baseline_vol_bps`.
+  - The older `max(min_spread, round(spread_target * vol_ratio))` form (no `vol_multiplier`) is **superseded** — it contradicted the vol-spread test contract and is no longer used. Do not reintroduce it.
+
+### MM Competition — config and IDs
+- `params.yaml` key is `equity_mms` (list); each entry has an explicit `id` string field
+- MMs must have different `spread_target` values (not just different `risk_aversion`) so undercutting is observable in logs
+- Loop: `for mm_cfg in cfg["agents"]["equity_mms"]: agents.append(EquityMarketMaker(mm_cfg["id"], mm_cfg, rng))`
+- Phase 2 e2e test (`test_e2e_phase2.py`) is **frozen** — do not modify it. Add `test_e2e_phase3.py` for Phase 3 assertions
+
+### MM P&L — correct decomposition
+Track two quantities on `EquityMarketMaker`, updated on every fill:
+```
+cash_flow += fill.price * fill.qty   # positive for sells, negative for buys
+```
+Report in summary:
+```
+inventory_value = position * current_mid
+total_pnl = cash_flow + inventory_value
+```
+Do NOT compute P&L by summing fill prices without sign — that produces cash flow only, not true P&L.
+- ✅ **Resolved (Audit P0-2):** `EquityMarketMaker.on_fills` updates `cash_flow` for **every fill the MM is party to** — taker or maker — signed by whether the MM bought (`-price*qty`) or sold (`+price*qty`). A marketable, inventory-skewed quote (MM as taker) is now counted, so `total_pnl` stays correct.
+
+### Vol spread test — config-aware assertion
+```python
+vol_multiplier = mm_cfg["vol_multiplier"]
+expected_min_ratio = 1 + (vol_multiplier - 1) * 0.5
+assert new_spread / old_spread >= expected_min_ratio
+```
+Test must read `vol_multiplier` from the config dict, not hardcode 20%.
 
 ## Phase 2 Implementation Contracts
 

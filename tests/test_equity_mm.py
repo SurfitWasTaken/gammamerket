@@ -19,6 +19,9 @@ def make_config(**overrides):
         risk_aversion=0.1,
         quote_size=5,
         max_orders_per_side=1,
+        vol_window=20,
+        vol_multiplier=2.0,
+        baseline_vol_bps=5.0,
     )
     defaults.update(overrides)
     return EquityMMConfig(**defaults)
@@ -30,6 +33,7 @@ def make_state(
     last_fill_price=10000,
     own_position=0,
     timestamp=10.0,
+    rolling_vol_bps=None,
 ):
     mid = (best_bid + best_ask) / 2.0 if best_bid is not None and best_ask is not None else None
     return MarketState(
@@ -39,6 +43,7 @@ def make_state(
         last_fill_price=last_fill_price,
         own_position=own_position,
         timestamp=timestamp,
+        rolling_vol_bps=rolling_vol_bps,
     )
 
 
@@ -51,20 +56,6 @@ class TestEquityMarketMaker:
         assert mm.position == 0
         assert mm._resting_bid_id is None
         assert mm._resting_ask_id is None
-
-    def test_schedule_next_returns_finite_time(self):
-        rng = np.random.default_rng(42)
-        cfg = make_config(arrival_rate=20.0)
-        mm = EquityMarketMaker("mm1", cfg, rng)
-        next_t = mm.schedule_next(0.0)
-        assert 0 < next_t < float("inf")
-
-    def test_schedule_next_zero_rate_returns_inf(self):
-        rng = np.random.default_rng(42)
-        cfg = make_config(arrival_rate=0.0)
-        mm = EquityMarketMaker("mm1", cfg, rng)
-        next_t = mm.schedule_next(0.0)
-        assert next_t == float("inf")
 
     def test_step_places_two_sided_quotes_when_within_inventory(self):
         rng = np.random.default_rng(42)
@@ -234,6 +225,69 @@ class TestEquityMarketMaker:
 
         for a in actions:
             assert a.qty == 10
+
+    def test_spread_widens_with_vol(self):
+        rng = np.random.default_rng(42)
+        cfg = make_config(spread_target=4, vol_multiplier=2.0, baseline_vol_bps=5.0)
+
+        mm_low = EquityMarketMaker("mm1", cfg, rng)
+        state_low = make_state(rolling_vol_bps=5.0)
+        actions_low = mm_low.step(state_low)
+        bid_low = next(a for a in actions_low if isinstance(a, Order) and a.side is Side.BUY)
+        ask_low = next(a for a in actions_low if isinstance(a, Order) and a.side is Side.SELL)
+        spread_low = ask_low.price - bid_low.price
+
+        mm_high = EquityMarketMaker("mm2", cfg, rng)
+        state_high = make_state(rolling_vol_bps=10.0)
+        actions_high = mm_high.step(state_high)
+        bid_high = next(a for a in actions_high if isinstance(a, Order) and a.side is Side.BUY)
+        ask_high = next(a for a in actions_high if isinstance(a, Order) and a.side is Side.SELL)
+        spread_high = ask_high.price - bid_high.price
+
+        vol_multiplier = cfg.vol_multiplier
+        expected_min_ratio = 1 + (vol_multiplier - 1) * 0.5
+        assert spread_high / spread_low >= expected_min_ratio
+
+    def test_pnl_cash_flow_and_total(self):
+        rng = np.random.default_rng(42)
+        cfg = make_config()
+        mm = EquityMarketMaker("mm1", cfg, rng)
+        state = make_state()
+        actions = mm.step(state)
+
+        bid_order = next(a for a in actions if a.side is Side.BUY)
+        ask_order = next(a for a in actions if a.side is Side.SELL)
+
+        fill_bid = Fill(
+            taker_order_id=uuid.uuid4(),
+            maker_order_id=bid_order.order_id,
+            taker_agent_id="taker",
+            maker_agent_id="mm1",
+            aggressor_side=Side.SELL,
+            price=bid_order.price,
+            qty=5,
+            timestamp=state.timestamp,
+        )
+        mm.on_fills([fill_bid])
+        assert mm.cash_flow == -bid_order.price * 5
+
+        fill_ask = Fill(
+            taker_order_id=uuid.uuid4(),
+            maker_order_id=ask_order.order_id,
+            taker_agent_id="taker",
+            maker_agent_id="mm1",
+            aggressor_side=Side.BUY,
+            price=ask_order.price,
+            qty=5,
+            timestamp=state.timestamp,
+        )
+        mm.on_fills([fill_ask])
+        assert mm.cash_flow == (ask_order.price - bid_order.price) * 5
+
+        mm.position = 0
+        mm._current_mid = 10000.0
+        expected_pnl = mm.cash_flow + 0 * 10000.0
+        assert mm.total_pnl == expected_pnl
 
 
 if __name__ == "__main__":

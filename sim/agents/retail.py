@@ -66,5 +66,6 @@ class Retail(Agent):
                 price=0,
                 qty=qty,
                 timestamp=state.timestamp,
+                is_market=True,
             )
         ]

@@ -6,6 +6,7 @@ market:
   initial_ask_size: 200
   max_steps: 200
   seed: 42
+  vol_window: 20
 
 agents:
   retail:
@@ -24,10 +25,25 @@ agents:
     scale: 100
     signal_price_scale: 5
 
-  equity_mm:
-    arrival_rate: 20.0
-    spread_target: 4
-    inventory_limit: 2000
-    risk_aversion: 0.1
-    quote_size: 5
-    max_orders_per_side: 1
+  equity_mms:
+    - id: "mm_aggressive"
+      arrival_rate: 100.0
+      spread_target: 3
+      inventory_limit: 2000
+      risk_aversion: 0.05
+      quote_size: 5
+      max_orders_per_side: 1
+      vol_window: 20
+      vol_multiplier: 2.0
+      baseline_vol_bps: 5.0
+
+    - id: "mm_conservative"
+      arrival_rate: 100.0
+      spread_target: 5
+      inventory_limit: 2000
+      risk_aversion: 0.1
+      quote_size: 5
+      max_orders_per_side: 1
+      vol_window: 20
+      vol_multiplier: 2.0
+      baseline_vol_bps: 5.0

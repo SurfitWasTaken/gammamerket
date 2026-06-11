@@ -37,11 +37,13 @@ class Clock:
         book: The LOB to submit orders into. `on_fill` on the book (if
             set) is the source of the fill log; the clock does not
             re-invoke the tape.
-        tape: The fill log; used to look up `last_fill_price` for the
-            `MarketState` snapshot.
+        tape: The fill log; used to look up `last_fill_price` and compute
+            rolling volatility for the `MarketState` snapshot.
         rng: NumPy `Generator` for drawing exponential inter-arrival
             times. Passing a seeded generator makes the schedule
             deterministic.
+        vol_window: Number of recent fills to use for rolling volatility
+            calculation. Must be >= 2.
     """
 
     def __init__(
@@ -49,10 +51,14 @@ class Clock:
         book: LimitOrderBook,
         tape: Tape,
         rng: np.random.Generator,
+        vol_window: int = 20,
     ) -> None:
+        if vol_window < 2:
+            raise ValueError(f"vol_window must be >= 2, got {vol_window}")
         self.book: LimitOrderBook = book
         self.tape: Tape = tape
         self.rng: np.random.Generator = rng
+        self.vol_window: int = vol_window
         self.agents: dict[str, Agent] = {}
         self.rates: dict[str, float] = {}
         self._heap: list[_Event] = []
@@ -88,7 +94,7 @@ class Clock:
         for action in actions:
             if isinstance(action, Order):
                 agent.open_order_ids.add(action.order_id)
-                if action.price == 0:
+                if action.is_market:
                     fills = self.book.submit_market(action)
                 else:
                     fills = self.book.submit_limit(action)
@@ -122,11 +128,22 @@ class Clock:
         )
 
     def _build_state(self, agent: Agent) -> MarketState:
+        mid = self.book.mid()
+        prices = self.tape.prices()
+        rolling_vol_bps: float | None = None
+        if len(prices) >= 2 and mid is not None and mid > 0:
+            window = prices[-self.vol_window :]
+            if len(window) >= 2:
+                # Returns are already fractional (Δprice / price), so the
+                # std is a fraction of price; * 1e4 converts directly to bps.
+                returns = np.diff(window.astype(np.float64)) / window[:-1]
+                rolling_vol_bps = float(np.std(returns)) * 10_000.0
         return MarketState(
             best_bid=self.book.best_bid(),
             best_ask=self.book.best_ask(),
-            mid=self.book.mid(),
+            mid=mid,
             last_fill_price=self.tape.last_fill_price(),
             own_position=agent.position,
             timestamp=self.now,
+            rolling_vol_bps=rolling_vol_bps,
         )

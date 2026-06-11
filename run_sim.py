@@ -1,9 +1,9 @@
-"""Phase 2 simulation runner.
+"""Phase 3 simulation runner.
 
-Builds a market with N retail noise-traders + 1 institutional
-speculator, seeds a tight BBO, drives the discrete-event clock, and
-produces a 3-panel summary plot (price series, return
-autocorrelation, trade-size distribution).
+Builds a market with N retail noise-traders, 1 institutional
+speculator, and 2 equity market makers, seeds a tight BBO, drives the
+discrete-event clock, and produces a 3-panel summary plot (price
+series, return autocorrelation, trade-size distribution).
 
 Usage:
     python run_sim.py            # uses sim/config/params.yaml
@@ -86,35 +86,47 @@ def _build_agents(cfg: dict, rng: np.random.Generator) -> list:
             rng=rng,
         )
     )
-    mm_cfg = cfg["agents"]["equity_mm"]
-    agents.append(
-        EquityMarketMaker(
-            agent_id="mm0",
-            config=EquityMMConfig(
-                arrival_rate=float(mm_cfg["arrival_rate"]),
-                spread_target=int(mm_cfg["spread_target"]),
-                inventory_limit=int(mm_cfg["inventory_limit"]),
-                risk_aversion=float(mm_cfg["risk_aversion"]),
-                quote_size=int(mm_cfg["quote_size"]),
-                max_orders_per_side=int(mm_cfg["max_orders_per_side"]),
-            ),
-            rng=rng,
+    # Accept both "equity_mms" (list, spec form) and the legacy singular
+    # "equity_mm" key. The shim is retained because the frozen
+    # test_e2e_phase2.py passes config under the singular key (Audit P2-2).
+    mm_cfgs = cfg["agents"].get("equity_mms")
+    if mm_cfgs is None:
+        mm_cfgs = [cfg["agents"]["equity_mm"]]
+    for mm_cfg in mm_cfgs:
+        agents.append(
+            EquityMarketMaker(
+                agent_id=mm_cfg.get("id", "mm0"),
+                config=EquityMMConfig(
+                    arrival_rate=float(mm_cfg["arrival_rate"]),
+                    spread_target=int(mm_cfg["spread_target"]),
+                    inventory_limit=int(mm_cfg["inventory_limit"]),
+                    risk_aversion=float(mm_cfg["risk_aversion"]),
+                    quote_size=int(mm_cfg["quote_size"]),
+                    max_orders_per_side=int(mm_cfg["max_orders_per_side"]),
+                    vol_window=int(mm_cfg.get("vol_window", 20)),
+                    vol_multiplier=float(mm_cfg.get("vol_multiplier", 1.0)),
+                    baseline_vol_bps=float(mm_cfg.get("baseline_vol_bps", 5.0)),
+                ),
+                rng=rng,
+            )
         )
-    )
     return agents
 
 
 def _register(clock: Clock, agents: list, cfg: dict) -> None:
     retail_rate = float(cfg["agents"]["retail"]["arrival_rate"])
     inst_rate = float(cfg["agents"]["institution"]["arrival_rate"])
-    mm_rate = float(cfg["agents"]["equity_mm"]["arrival_rate"])
+    mm_cfgs = cfg["agents"].get("equity_mms")
+    if mm_cfgs is None:
+        mm_cfgs = [cfg["agents"]["equity_mm"]]
     for a in agents:
         if isinstance(a, Retail):
             clock.register(a, retail_rate)
         elif isinstance(a, Institution):
             clock.register(a, inst_rate)
         elif isinstance(a, EquityMarketMaker):
-            clock.register(a, mm_rate)
+            mm_cfg = next(m for m in mm_cfgs if m.get("id", "mm0") == a.agent_id)
+            clock.register(a, float(mm_cfg["arrival_rate"]))
 
 
 def run(cfg: dict) -> dict[str, Any]:
@@ -129,7 +141,8 @@ def run(cfg: dict) -> dict[str, Any]:
     book, tape = _build_book_and_tape(market)
     _seed_bbo(book, market)
     agents = _build_agents(cfg, rng)
-    clock = Clock(book, tape, rng)
+    vol_window = int(market.get("vol_window", 20))
+    clock = Clock(book, tape, rng, vol_window=vol_window)
     _register(clock, agents, cfg)
     clock.run(int(market["max_steps"]))
     return {
@@ -160,6 +173,14 @@ def _summary(result: dict) -> dict[str, Any]:
         out["return_std"] = float(r.std())
         acf = autocorrelation(r, max_lag=5)
         out["autocorr_lag_1"] = float(acf[0])
+
+    for a in result["agents"]:
+        if isinstance(a, EquityMarketMaker):
+            out[f"{a.agent_id}_total_pnl"] = a.total_pnl
+            out[f"{a.agent_id}_cash_flow"] = a.cash_flow
+            out[f"{a.agent_id}_avg_spread"] = a.avg_spread
+            out[f"{a.agent_id}_n_quotes"] = len(a.spread_log)
+            out[f"{a.agent_id}_final_position"] = a.position
     return out
 
 
@@ -219,7 +240,7 @@ def _plot(result: dict, path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="gammarket Phase 2 runner")
+    parser = argparse.ArgumentParser(description="gammarket Phase 3 runner")
     parser.add_argument(
         "--no-plot",
         action="store_true",
@@ -228,8 +249,8 @@ def main() -> None:
     parser.add_argument(
         "--plot-path",
         type=Path,
-        default=Path("results/phase2.png"),
-        help="output path for the summary plot (default: results/phase2.png)",
+        default=Path("results/phase3.png"),
+        help="output path for the summary plot (default: results/phase3.png)",
     )
     parser.add_argument(
         "--config",

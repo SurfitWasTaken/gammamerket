@@ -276,4 +276,5 @@ def _with_qty(order: Order, qty: int) -> Order:
         price=order.price,
         qty=qty,
         timestamp=order.timestamp,
+        is_market=order.is_market,
     )
