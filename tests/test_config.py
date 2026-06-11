@@ -39,6 +39,18 @@ def test_default_config_has_required_keys() -> None:
         assert k in inst, f"missing institution key: {k}"
 
 
+def test_default_config_has_phase4_option_keys() -> None:
+    cfg = load_config()
+    assert cfg["market"]["minutes_per_year"] == 525600  # D1
+    opt = cfg["options"]
+    assert opt["strikes_pct"] == [-0.05, -0.025, 0.0, 0.025, 0.05]  # D3
+    assert opt["expiries_days"] == [7, 14, 30]
+    assert opt["risk_free_rate"] == 0.05
+    omm = cfg["agents"]["options_mm"]  # seeded for Phase 5; unused in Phase 4
+    for k in ("vol_estimate", "spread_vols", "delta_hedge_threshold", "gamma_limit"):
+        assert k in omm, f"missing options_mm key: {k}"
+
+
 def test_load_explicit_path(tmp_path: Path) -> None:
     p = tmp_path / "custom.yaml"
     p.write_text("market:\n  tick_size: 2\n  seed: 7\nagents: {}\n")

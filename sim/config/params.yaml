@@ -7,6 +7,7 @@ market:
   max_steps: 200
   seed: 42
   vol_window: 20
+  minutes_per_year: 525600          # D1: continuous calendar (365×24×60)
 
 agents:
   retail:
@@ -47,3 +48,18 @@ agents:
       vol_window: 20
       vol_multiplier: 2.0
       baseline_vol_bps: 5.0
+
+  # Phase 5 consumes this; seeded now so the dealer has it ready. No agent
+  # reads options_mm in Phase 4.
+  options_mm:
+    vol_estimate: 0.20            # annualised σ for BS pricing / FlatVolSurface
+    spread_vols: 2.0             # bid/ask quoted ± this many vol points (Phase 5)
+    delta_hedge_threshold: 0.05  # re-hedge if |net delta| exceeds this (Phase 5)
+    gamma_limit: 500             # portfolio gamma cap (Phase 5)
+
+# Phase 4: options chain + pricing. Strikes are moneyness offsets (D3),
+# snapped to tick multiples around the live book mid at chain construction.
+options:
+  strikes_pct: [-0.05, -0.025, 0.0, 0.025, 0.05]   # D3
+  expiries_days: [7, 14, 30]
+  risk_free_rate: 0.05

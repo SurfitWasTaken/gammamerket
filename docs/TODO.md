@@ -33,12 +33,12 @@ right phase. `[~]` = in progress. Detail for Phase 4 lives in
 - [x] commit: "Phase 4: chain complete"
 
 **Step 4 — config wiring**
-- [ ] add `options` + `agents.options_mm` + `market.minutes_per_year` to params.yaml
-- [ ] confirm `config/loader.py` reads them (no new read sites)
+- [x] add `options` + `agents.options_mm` + `market.minutes_per_year` to params.yaml
+- [x] confirm `config/loader.py` reads them (no new read sites)
 
 **Step 5 — integration**
-- [ ] `tests/test_e2e_phase4.py`: price a chain off a live `run()` book mid
-- [ ] full suite green
+- [x] `tests/test_e2e_phase4.py`: price a chain off a live `run()` book mid
+- [x] full suite green
 
 **Step 6 — close-out**
 - [ ] CLAUDE.md: Phase 4 → [x], modules [x], test count, contracts section
