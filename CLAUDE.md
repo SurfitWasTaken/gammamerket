@@ -12,7 +12,8 @@ per-phase contracts. The **operating layer** (goals, roadmap, current workplan,
 TODO) lives in **`docs/`** — start at **`docs/README.md`**:
 - `docs/GOALS.md` — north star + definition of done (stylised facts)
 - `docs/ROADMAP.md` — the six-phase plan and current position
-- `docs/PHASE_4_WORKPLAN.md` — the immediate work: Options Pricing + Chain
+- `docs/PHASE_5_WORKPLAN.md` — the immediate work: Options Dealer + Delta Hedging
+- `docs/PHASE_4_WORKPLAN.md` — completed: Options Pricing + Chain (reference)
 - `docs/TODO.md` — the living checklist
 If `docs/` and this file ever disagree, **CLAUDE.md wins** — fix one to match the
 other in the same commit.

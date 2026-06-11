@@ -12,19 +12,27 @@ coding standards, and the per-phase implementation contracts.
    it, CLAUDE.md wins (or fix one to match the other in the same commit).
 2. **`GOALS.md`** — the north star and the definition of done (stylised facts).
 3. **`ROADMAP.md`** — the six-phase plan and where we are.
-4. **`PHASE_4_WORKPLAN.md`** — your immediate work: Options Pricing + Chain.
-   Module-by-module specs, the open design decisions you must resolve first,
-   and the test plan.
+4. **`PHASE_5_WORKPLAN.md`** — your immediate work: Options Dealer + Delta
+   Hedging (the core experiment). Module-by-module specs, the open design
+   decisions (E1–E6) you must resolve first, and the test plan.
+   **`PHASE_4_WORKPLAN.md`** is the completed Options Pricing + Chain plan,
+   kept for reference (its D1–D5 contracts are frozen in `CLAUDE.md`).
 5. **`TODO.md`** — the living checklist. Keep it current as you work.
 
-## Current state (handoff baseline — 2026-06-11)
-- **Phases 1–3 complete.** LOB engine, equity agents (retail, institution,
-  two competing market makers), discrete-event clock, central tape, metrics.
-- **All 141 tests pass:** `.venv/bin/python -m pytest tests/ -q`
-- **The Phase 3 Audit backlog is fully cleared** (commit `5d5779e`). The audit
-  section in `CLAUDE.md` is now a dated resolution log, not an open backlog.
-- **Phase 4 has not started** — no `sim/options/` package exists yet, and
-  `params.yaml` has no `options` / `options_mm` blocks yet.
+## Current state (Phase 5 kickoff — 2026-06-11)
+- **Phases 1–4 complete.** LOB engine, equity agents (retail, institution, two
+  competing market makers), discrete-event clock, central tape, metrics, and the
+  `sim/options/` library (Black-Scholes price + Greeks, flat vol surface, chain).
+- **All 217 tests pass:** `.venv/bin/python -m pytest tests/ -q`
+- **No carried-over tech debt.** The Phase 3 Audit backlog was cleared (commit
+  `5d5779e`); Phase 4 needed no audit backlog. The audit section in `CLAUDE.md`
+  is a dated resolution log, not an open backlog.
+- **Phase 4 shipped** the options library with the D1–D5 unit conversions frozen
+  in `CLAUDE.md` (Phase 4 Implementation Contracts). `params.yaml` now carries
+  `market.minutes_per_year`, an `options` block, and a seeded `agents.options_mm`
+  block (unused until Phase 5). `scipy>=1.10` is pinned in `requirements.txt`.
+- **Phase 5 is the immediate work** — Options Dealer + Delta Hedging, the core
+  feedback-loop experiment. Start at `PHASE_5_WORKPLAN.md` Step 0 (E1–E6).
 
 ## How to work here (house rules, from CLAUDE.md)
 - **One module at a time.** Complete and test a file before starting the next.
