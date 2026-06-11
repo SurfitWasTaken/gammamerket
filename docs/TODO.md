@@ -27,10 +27,10 @@ right phase. `[~]` = in progress. Detail for Phase 4 lives in
 - [x] commit: "Phase 4: surface complete"
 
 **Step 3 — `sim/options/chain.py`**
-- [ ] `OptionSeries` dataclass + `build_chain(...)`
-- [ ] `time_to_expiry_years(...)` (D1 site) + `spot_from_book(...)` (D2 site)
-- [ ] `tests/test_chain.py`
-- [ ] commit: "Phase 4: chain complete"
+- [x] `OptionSeries` dataclass + `build_chain(...)`
+- [x] `time_to_expiry_years(...)` (D1 site) + `spot_from_book(...)` (D2 site)
+- [x] `tests/test_chain.py`
+- [x] commit: "Phase 4: chain complete"
 
 **Step 4 — config wiring**
 - [ ] add `options` + `agents.options_mm` + `market.minutes_per_year` to params.yaml
