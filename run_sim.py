@@ -21,6 +21,8 @@ import numpy as np
 
 from sim.agents.equity_mm import EquityMarketMaker, EquityMMConfig
 from sim.agents.institution import Institution
+from sim.agents.options_flow import OptionsFlow, OptionsFlowConfig
+from sim.agents.options_mm import OptionsMarketMaker, OptionsMMConfig
 from sim.agents.retail import Retail
 from sim.analytics.metrics import (
     autocorrelation,
@@ -33,6 +35,8 @@ from sim.core.clock import Clock
 from sim.core.events import Order, Side
 from sim.core.lob import LimitOrderBook
 from sim.core.tape import Tape
+from sim.options.chain import build_chain, spot_from_book
+from sim.options.surface import FlatVolSurface
 
 
 def _build_book_and_tape(cfg_market: dict) -> tuple[LimitOrderBook, Tape]:
@@ -110,7 +114,61 @@ def _build_agents(cfg: dict, rng: np.random.Generator) -> list:
                 rng=rng,
             )
         )
+    # Phase 5 path: the presence of agents.options_flow switches on the
+    # options dealer + demand flow. Older configs (frozen Phase 2/3 e2e
+    # tests) lack the key and run the equity-only market unchanged.
+    if "options_flow" in cfg["agents"]:
+        dealer = _build_dealer(cfg, rng)
+        flow_cfg = cfg["agents"]["options_flow"]
+        flow = OptionsFlow(
+            agent_id="options_flow",
+            config=OptionsFlowConfig(
+                arrival_rate=float(flow_cfg["arrival_rate"]),
+                max_lots=int(flow_cfg["max_lots"]),
+            ),
+            rng=rng,
+            dealer=dealer,
+        )
+        agents.append(dealer)
+        agents.append(flow)
     return agents
+
+
+def _build_dealer(cfg: dict, rng: np.random.Generator) -> OptionsMarketMaker:
+    """Build the options dealer with its chain anchored to the seeded BBO mid.
+
+    The chain is built once at construction (E6): the anchor is the
+    initial price, which equals the seeded book mid (`_seed_bbo` rests
+    bid/ask symmetrically one tick around it).
+    """
+    market = cfg["market"]
+    options = cfg["options"]
+    mm_cfg = cfg["agents"]["options_mm"]
+    tick_size = int(market["tick_size"])
+    chain = build_chain(
+        float(market["initial_price"]),
+        0.0,
+        strikes_pct=[float(p) for p in options["strikes_pct"]],
+        expiries_days=[float(d) for d in options["expiries_days"]],
+        tick_size=tick_size,
+    )
+    return OptionsMarketMaker(
+        agent_id="options_mm",
+        config=OptionsMMConfig(
+            arrival_rate=float(mm_cfg["arrival_rate"]),
+            vol_estimate=float(mm_cfg["vol_estimate"]),
+            spread_vols=float(mm_cfg["spread_vols"]),
+            delta_hedge_threshold=float(mm_cfg["delta_hedge_threshold"]),
+            gamma_limit=float(mm_cfg["gamma_limit"]),
+            option_tick=int(mm_cfg.get("option_tick", tick_size)),
+        ),
+        rng=rng,
+        chain=chain,
+        surface=FlatVolSurface(float(mm_cfg["vol_estimate"])),
+        risk_free_rate=float(options["risk_free_rate"]),
+        minutes_per_year=float(market["minutes_per_year"]),
+        tick_size=tick_size,
+    )
 
 
 def _register(clock: Clock, agents: list, cfg: dict) -> None:
@@ -127,6 +185,10 @@ def _register(clock: Clock, agents: list, cfg: dict) -> None:
         elif isinstance(a, EquityMarketMaker):
             mm_cfg = next(m for m in mm_cfgs if m.get("id", "mm0") == a.agent_id)
             clock.register(a, float(mm_cfg["arrival_rate"]))
+        elif isinstance(a, OptionsMarketMaker):
+            clock.register(a, float(cfg["agents"]["options_mm"]["arrival_rate"]))
+        elif isinstance(a, OptionsFlow):
+            clock.register(a, float(cfg["agents"]["options_flow"]["arrival_rate"]))
 
 
 def run(cfg: dict) -> dict[str, Any]:
@@ -181,6 +243,18 @@ def _summary(result: dict) -> dict[str, Any]:
             out[f"{a.agent_id}_avg_spread"] = a.avg_spread
             out[f"{a.agent_id}_n_quotes"] = len(a.spread_log)
             out[f"{a.agent_id}_final_position"] = a.position
+        elif isinstance(a, OptionsMarketMaker):
+            out[f"{a.agent_id}_n_option_trades"] = len(a.trade_log)
+            out[f"{a.agent_id}_n_hedges"] = len(a.hedge_log)
+            out[f"{a.agent_id}_gamma_rejections"] = a.gamma_rejections
+            out[f"{a.agent_id}_option_cash_flow"] = a.option_cash_flow
+            out[f"{a.agent_id}_final_equity_position"] = a.position
+            mid = result["book"].mid()
+            if mid is not None:
+                spot = spot_from_book(float(mid), a.tick_size)
+                out[f"{a.agent_id}_final_net_delta_lots"] = a.net_delta_lots(
+                    spot, float(result["clock"].now)
+                )
     return out
 
 

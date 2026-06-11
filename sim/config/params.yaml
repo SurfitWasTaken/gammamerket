@@ -49,13 +49,21 @@ agents:
       vol_multiplier: 2.0
       baseline_vol_bps: 5.0
 
-  # Phase 5 consumes this; seeded now so the dealer has it ready. No agent
-  # reads options_mm in Phase 4.
+  # Phase 5: the options dealer (delta-hedging market maker).
   options_mm:
-    vol_estimate: 0.20            # annualised σ for BS pricing / FlatVolSurface
-    spread_vols: 2.0             # bid/ask quoted ± this many vol points (Phase 5)
-    delta_hedge_threshold: 0.05  # re-hedge if |net delta| exceeds this (Phase 5)
-    gamma_limit: 500             # portfolio gamma cap (Phase 5)
+    arrival_rate: 20.0           # dealer re-hedge checks per minute (E3)
+    vol_estimate: 0.20           # annualised σ for BS pricing / FlatVolSurface
+    spread_vols: 2.0             # bid/ask quoted ± this many vol points (E4: 1 pt = 0.01 σ)
+    delta_hedge_threshold: 0.05  # re-hedge if |net delta| exceeds this, in lots (E3)
+    gamma_limit: 500             # portfolio gamma cap, lots/tick (E5)
+    option_tick: 1               # option quote grid (E4); defaults to market tick
+
+  # Phase 5: the quote-driven options demand (E1) — a Poisson taker that
+  # lifts/hits the dealer's quotes. Its presence switches run_sim.py to the
+  # Phase 5 path (dealer + flow built alongside the Phase 3 agents).
+  options_flow:
+    arrival_rate: 5.0            # option trades per minute
+    max_lots: 3                  # contracts per trade ~ U[1, max_lots]
 
 # Phase 4: options chain + pricing. Strikes are moneyness offsets (D3),
 # snapped to tick multiples around the live book mid at chain construction.
