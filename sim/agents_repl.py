@@ -1,12 +1,13 @@
-"""Agent-driven live REPL.
+"""Agent-driven live REPL (Phase 5).
 
-Drives the discrete-event clock with the full Phase 3 agent set —
-retail noise traders, an institutional speculator, and the competing
-equity market makers — and streams updates to the matplotlib live view
-(the same `sim.viz` subprocess used by `sim.repl`). The market makers
-provide continuous two-sided liquidity, so the book stays two-sided and
-the price behaves like the Phase 3 sim rather than emptying out. Manual
-orders can still be submitted alongside the agents.
+Drives the discrete-event clock with the full Phase 5 agent set —
+retail noise traders, an institutional speculator, competing equity
+market makers, the options dealer, and the options-demand flow — and
+streams updates to the matplotlib live view (the same `sim.viz`
+subprocess used by `sim.repl`). The market makers provide continuous
+two-sided equity liquidity; the options dealer quotes and delta-hedges
+against the flow. Manual orders can still be submitted alongside the
+agents.
 
 Usage:
     python -m sim.agents_repl [--viz] [--config path/to/params.yaml]
@@ -16,7 +17,7 @@ Inside the REPL:
     step()               run one sim event
     run(n=10)            run n events
     auto([delay=0.02])   run continuously; Ctrl-C to stop
-    state()              print clock time, fill count, book, inst state
+    state()              print clock time, fill count, agents, dealer δ
     reset()              rebuild the sim from `cfg` (or reload config)
     viz_on() / viz_off() start/stop the matplotlib view
     blimit / slimit / bmarket / smarket   manual orders
@@ -48,12 +49,16 @@ import numpy as np
 
 from sim.agents.equity_mm import EquityMarketMaker, EquityMMConfig
 from sim.agents.institution import Institution
+from sim.agents.options_flow import OptionsFlow, OptionsFlowConfig
+from sim.agents.options_mm import OptionsMarketMaker, OptionsMMConfig
 from sim.agents.retail import Retail
 from sim.config.loader import load_config
 from sim.core.clock import Clock
 from sim.core.events import Order, Side
 from sim.core.lob import LimitOrderBook
 from sim.core.tape import Tape
+from sim.options.chain import build_chain, spot_from_book
+from sim.options.surface import FlatVolSurface
 from sim.snapshot import book_snapshot
 
 
@@ -186,6 +191,47 @@ def _setup_sim(config: dict) -> None:
             )
         )
 
+    # Phase 5 options dealer + demand flow. Mirrors run_sim._build_agents:
+    # the presence of agents.options_flow switches on the dealer path.
+    options_mm_cfg = config["agents"].get("options_mm")
+    options_flow_cfg = config["agents"].get("options_flow")
+    if options_mm_cfg is not None and options_flow_cfg is not None:
+        tick_size = int(market["tick_size"])
+        chain = build_chain(
+            float(initial_price), 0.0,
+            strikes_pct=[float(p) for p in config["options"]["strikes_pct"]],
+            expiries_days=[float(d) for d in config["options"]["expiries_days"]],
+            tick_size=tick_size,
+        )
+        dealer = OptionsMarketMaker(
+            agent_id="options_mm",
+            config=OptionsMMConfig(
+                arrival_rate=float(options_mm_cfg["arrival_rate"]),
+                vol_estimate=float(options_mm_cfg["vol_estimate"]),
+                spread_vols=float(options_mm_cfg["spread_vols"]),
+                delta_hedge_threshold=float(options_mm_cfg["delta_hedge_threshold"]),
+                gamma_limit=float(options_mm_cfg["gamma_limit"]),
+                option_tick=int(options_mm_cfg.get("option_tick", tick_size)),
+            ),
+            rng=rng,
+            chain=chain,
+            surface=FlatVolSurface(float(options_mm_cfg["vol_estimate"])),
+            risk_free_rate=float(config["options"]["risk_free_rate"]),
+            minutes_per_year=float(market["minutes_per_year"]),
+            tick_size=tick_size,
+        )
+        flow = OptionsFlow(
+            agent_id="options_flow",
+            config=OptionsFlowConfig(
+                arrival_rate=float(options_flow_cfg["arrival_rate"]),
+                max_lots=int(options_flow_cfg["max_lots"]),
+            ),
+            rng=rng,
+            dealer=dealer,
+        )
+        agents.append(dealer)
+        agents.append(flow)
+
     clock = Clock(book, tape, rng, vol_window=int(market.get("vol_window", 20)))
     for a in agents:
         if isinstance(a, Retail):
@@ -195,6 +241,10 @@ def _setup_sim(config: dict) -> None:
         elif isinstance(a, EquityMarketMaker):
             mm_cfg = next(m for m in mm_cfgs if m.get("id", "mm0") == a.agent_id)
             clock.register(a, float(mm_cfg["arrival_rate"]))
+        elif isinstance(a, OptionsMarketMaker):
+            clock.register(a, float(options_mm_cfg["arrival_rate"]))
+        elif isinstance(a, OptionsFlow):
+            clock.register(a, float(options_flow_cfg["arrival_rate"]))
 
     _write_snapshot()
 
@@ -326,6 +376,21 @@ def state() -> None:
             f"  {mm.agent_id}: pos={mm.position:+5d}  pnl={mm.total_pnl:+10.1f}  "
             f"cash={mm.cash_flow:+10.1f}"
         )
+    dealer = next((a for a in agents if isinstance(a, OptionsMarketMaker)), None)
+    if dealer is not None:
+        mid = book.mid()
+        if mid is not None:
+            spot = spot_from_book(float(mid), dealer.tick_size)
+            net = dealer.net_delta_lots(spot, float(clock.now))
+            gamma = dealer.portfolio_gamma(spot, float(clock.now))
+            print(
+                f"  options_mm: trades={len(dealer.trade_log):3d}  "
+                f"hedges={len(dealer.hedge_log):3d}  "
+                f"gamma_rej={dealer.gamma_rejections:3d}  "
+                f"pos={dealer.position:+5d}  "
+                f"net_\u03b4={net:+7.4f}  "
+                f"gamma={gamma:+9.3f}"
+            )
 
 
 def reset(seed: Optional[int] = None) -> None:
@@ -377,14 +442,14 @@ atexit.register(viz_off)
 
 
 _BANNER = """
-gammarket agents REPL  (Phase 3: retail + institution + equity MMs)
+gammarket agents REPL  (Phase 5: retail + institution + equity MMs + options)
 
   Start: python -m sim.agents_repl [--viz] [--config path/to/params.yaml]
 
   step()              run one event
   run(n=10)           run n events
   auto([delay=0.02])  run continuously, Ctrl-C to stop
-  state()             show clock time, fill count, book, inst state
+  state()             show clock time, fills, agents, dealer diagnostics
   reset([seed])       rebuild sim (optionally override seed)
   viz_on() / viz_off()  start/stop the matplotlib live view
 
@@ -393,7 +458,7 @@ gammarket agents REPL  (Phase 3: retail + institution + equity MMs)
   show()              print full LOB depth
 
   book, tape, clock, agents, cfg, fills  inspect sim pieces
-  Side, Order, Institution, Retail      types
+  Side, Order, Institution, Retail, OptionsMarketMaker  types
 
 Tip: viz_on(); auto();   <-- watch the depth + fills animate
 """
@@ -426,10 +491,12 @@ def main() -> None:
 
     print(_BANNER)
     n_mms = len(loaded["agents"].get("equity_mms", [loaded["agents"].get("equity_mm")]))
+    has_options = "options_flow" in loaded["agents"]
     print(
         f"  loaded: n_retail={int(loaded['agents']['retail']['n_agents'])}, "
-        f"1 institution, {n_mms} equity MM(s), "
-        f"max_steps={loaded['market']['max_steps']}, "
+        f"1 institution, {n_mms} equity MM(s)"
+        + (", options dealer + flow" if has_options else "")
+        + f", max_steps={loaded['market']['max_steps']}, "
         f"seed={loaded['market']['seed']}"
     )
     if args.viz:
@@ -461,6 +528,8 @@ def main() -> None:
         "Institution": Institution,
         "Retail": Retail,
         "EquityMarketMaker": EquityMarketMaker,
+        "OptionsMarketMaker": OptionsMarketMaker,
+        "OptionsFlow": OptionsFlow,
     }
     code.interact(banner="", local=namespace, exitmsg="bye")
 
