@@ -6,6 +6,17 @@ The goal is to generate realistic price dynamics endogenously through agent inte
 culminating in a full delta/gamma hedging feedback loop between an options dealer and
 the underlying equity limit order book.
 
+## Operating Docs — start here
+This file is the **authoritative** source for architecture, coding standards, and
+per-phase contracts. The **operating layer** (goals, roadmap, current workplan,
+TODO) lives in **`docs/`** — start at **`docs/README.md`**:
+- `docs/GOALS.md` — north star + definition of done (stylised facts)
+- `docs/ROADMAP.md` — the six-phase plan and current position
+- `docs/PHASE_4_WORKPLAN.md` — the immediate work: Options Pricing + Chain
+- `docs/TODO.md` — the living checklist
+If `docs/` and this file ever disagree, **CLAUDE.md wins** — fix one to match the
+other in the same commit.
+
 ## Architecture Overview
 Legend: `[x]` exists on disk today (end of Phase 3); `[ ]` planned for a later
 phase and not yet created. Keep this tree in sync with reality — do not list a
