@@ -19,7 +19,7 @@ If `docs/` and this file ever disagree, **CLAUDE.md wins** — fix one to match 
 other in the same commit.
 
 ## Architecture Overview
-Legend: `[x]` exists on disk today (end of Phase 3); `[ ]` planned for a later
+Legend: `[x]` exists on disk today (end of Phase 5); `[ ]` planned for a later
 phase and not yet created. Keep this tree in sync with reality — do not list a
 module here until it is committed.
 
@@ -29,7 +29,9 @@ sim/
 │   ├── lob.py            [x] Limit order book engine (price-time priority).
 │   │                         Matching lives INSIDE lob.py (_sweep); there is no
 │   │                         separate matching.py.
-│   ├── clock.py          [x] Discrete event scheduler + MarketState builder
+│   ├── clock.py          [x] Discrete event scheduler + MarketState builder.
+│   │                         Fills credit the *owning* agent (Order.agent_id),
+│   │                         not the stepping agent (Phase 5 E1 owner-routing).
 │   ├── tape.py           [x] Central fill tape (callback-injected into LOB)
 │   └── events.py         [x] Event types: Order, Fill, Cancel, Side
 ├── agents/
@@ -37,7 +39,8 @@ sim/
 │   ├── retail.py         [x] Noise traders (Poisson arrivals, market orders)
 │   ├── institution.py    [x] Mean-reverting (OU-signal) limit speculator
 │   ├── equity_mm.py      [x] Equity market maker (inventory + vol-aware quoting)
-│   └── options_mm.py     [ ] Options dealer (BS pricing + delta hedging) — Phase 5
+│   ├── options_mm.py     [x] Options dealer: BS quoting + delta hedging — Phase 5
+│   └── options_flow.py   [x] Options-demand flow (Poisson taker, E1) — Phase 5
 ├── options/              [x] options pricing library — Phase 4
 │   ├── pricer.py         [x] Black-Scholes pricing, Greeks (delta, gamma, vega)
 │   ├── surface.py        [x] Implied vol surface (FlatVolSurface; VolSurface protocol)
@@ -53,8 +56,9 @@ sim/
 ├── snapshot.py           [x] Pure LOB-state serialization for viz IPC (dev tool)
 ├── repl.py               [x] Interactive LOB REPL (dev tool)
 ├── agents_repl.py        [x] Agent-driven live REPL with viz (dev tool)
-tests/                    [x] 217 passing tests (LOB, agents, clock, options, e2e, tooling)
-run_sim.py                [x] Phase 3 entry point
+tests/                    [x] 255 passing tests (LOB, agents, clock, options, e2e, tooling)
+run_sim.py                [x] Phase 3/5 entry point (options dealer + flow switch
+                              on when `agents.options_flow` is present in config)
 CLAUDE.md                 [x] This file
 ```
 
@@ -72,17 +76,21 @@ observable experiment before the next adds complexity.
 | 2 | Equity Agents + Basic Microstructure | [x] |
 | 3 | Equity Market Maker | [x] |
 | 4 | Options Pricing + Chain | [x] |
-| 5 | Options Dealer + Delta Hedging | [ ] |
+| 5 | Options Dealer + Delta Hedging | [x] |
 | 6 | Calibration, Analytics, Full Run | [ ] |
 
-**Current position (2026-06-11):** Phases 1–4 complete; all 217 tests pass
-(`.venv/bin/python -m pytest tests/ -q`). The Phase 3 Audit backlog was
-**cleared** in a dedicated cleanup commit (see below). Phase 4 shipped the
-`sim/options/` library — Black-Scholes price + Greeks (delta/gamma/vega), a flat
-implied-vol surface behind a `VolSurface` protocol, and a chain anchored to the
-live book mid — with the D1–D5 unit conversions frozen in the contracts section.
-No agent consumes it yet; that is Phase 5 (Options Dealer + Delta Hedging). No
-Phase 4 audit backlog was needed — the module review surfaced no P0/P1 debt.
+**Current position (2026-06-12):** Phases 1–5 complete; all 255 tests pass
+(`.venv/bin/python -m pytest tests/ -q`). Phase 5 shipped the options dealer
+(`agents/options_mm.py`) and the quote-driven demand flow
+(`agents/options_flow.py`), closing the core feedback loop: option fill → delta
+recompute → equity market order into the LOB → underlying moves → re-hedge. The
+E1–E6 decisions are frozen in the Phase 5 Implementation Contracts section; the
+Clock gained backward-compatible **owner-routing** (fills credit the order's
+owning agent) so the flow can carry dealer-owned hedge orders to the book. The
+e2e contract holds: net delta within `max(delta_hedge_threshold, 0.5)` lots of
+zero after every hedge cycle. No P0/P1 debt surfaced; one latent self-trade
+accounting edge (pre-existing in `base.on_fills`) is logged in the
+`docs/TODO.md` backlog. Next: Phase 6 (Calibration, Analytics, Full Run).
 
 Update the Status column as phases complete.
 
@@ -212,12 +220,11 @@ After every options fill:
 → This feedback loop is the core experiment
 
 ## Parameters Reference (params.yaml keys)
-> `sim/config/params.yaml` is the single source of truth. The Phase 3 keys below
-> mirror the live file (integer ticks, `equity_mms` list). The `options_mm` /
-> `options` blocks are **forward-looking** — those keys do not exist yet and land
-> with Phase 4/5.
+> `sim/config/params.yaml` is the single source of truth. All keys below are
+> live (integer ticks, `equity_mms` list; the `options` block landed with
+> Phase 4, `options_mm`/`options_flow` consumption with Phase 5).
 ```yaml
-# --- live today (Phase 1–3) ---
+# --- live today (Phase 1–5) ---
 market:
   tick_size: 1            # integer ticks; no decimal prices in the LOB
   lot_size: 100
@@ -227,6 +234,7 @@ market:
   max_steps: 200          # event count, not trading days
   seed: 42
   vol_window: 20          # fills used for rolling-vol (clock + MM baseline)
+  minutes_per_year: 525600  # D1: continuous calendar (365×24×60)
 
 agents:
   retail:
@@ -265,16 +273,19 @@ agents:
       vol_multiplier: 2.0
       baseline_vol_bps: 5.0
 
-# --- forward-looking (Phase 4/5; keys not yet present) ---
-agents:
-  options_mm:
-    vol_estimate: 0.20     # annualised σ for BS pricing
-    spread_vols: 2.0       # bid/ask quoted ± 2 vol points
-    delta_hedge_threshold: 0.05  # re-hedge if |delta| > 0.05
-    gamma_limit: 500
+  options_mm:              # Phase 5 options dealer
+    arrival_rate: 20.0     # re-hedge checks per minute (E3)
+    vol_estimate: 0.20     # annualised σ for BS pricing / FlatVolSurface
+    spread_vols: 2.0       # quotes at σ ± spread_vols vol points; 1 pt = 0.01 σ (E4)
+    delta_hedge_threshold: 0.05  # lots (E3; 0.5-lot quantisation floor applies, E2)
+    gamma_limit: 500       # portfolio gamma cap, lots/tick (E5)
+    option_tick: 1         # option quote grid (E4)
+  options_flow:            # Phase 5 quote-driven options demand (E1)
+    arrival_rate: 5.0      # option trades per minute
+    max_lots: 3            # contracts per trade ~ U[1, max_lots]
 
 options:
-  strikes: [95, 97.5, 100, 102.5, 105]  # relative to spot
+  strikes_pct: [-0.05, -0.025, 0.0, 0.025, 0.05]  # moneyness offsets (D3)
   expiries_days: [7, 14, 30]
   risk_free_rate: 0.05
 ```
@@ -286,7 +297,8 @@ options:
   - Test: price-time priority is respected with two orders at same price
   - Test: cancellation removes order from book, does not affect price
 - Phase 3: equity MM must produce a non-zero spread within 100 steps
-- Phase 5: delta after hedge must be within threshold of zero
+- Phase 5: delta after hedge must be within `max(delta_hedge_threshold, 0.5)`
+  lots of zero (the E2 quantisation floor — integer-lot hedging cannot do better)
 
 Run all tests after every session: `pytest tests/ -v`
 
@@ -533,7 +545,8 @@ The simulation is only "working" when it reproduces:
 - [ ] Autocorrelation of returns near zero (weak-form efficiency emerges)
 - [ ] Volatility clustering (ARCH effects in return series)
 - [ ] Fat tails in return distribution (excess kurtosis > 0)
-- [ ] Delta of options_mm position near zero after each hedge cycle
+- [x] Delta of options_mm position near zero after each hedge cycle
+      (within the 0.5-lot quantisation floor, E2 — pinned by `test_e2e_phase5.py`)
 
 ## What Claude Should NOT Do
 - Do not add libraries not listed above without flagging it first

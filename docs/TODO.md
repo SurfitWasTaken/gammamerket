@@ -45,41 +45,47 @@ right phase. `[~]` = in progress. Detail for the current phase lives in
 - [x] ROADMAP.md + this file updated
 - [x] no debt accrued — module review surfaced no P0/P1; no Phase 4 Audit needed
 
-## Now: Phase 5 — Options Dealer + Delta Hedging  (detail: `PHASE_5_WORKPLAN.md`)
+## ✅ Done: Phase 5 — Options Dealer + Delta Hedging  (complete 2026-06-12, 255 tests)
 **Step 0 — resolve & record design decisions (blocking; see workplan §Step 0)**
-- [ ] E1: how option trades are generated (quote-driven flow vs seeded position)
-- [ ] E2: delta units — contracts → share-equivalents → equity hedge **lots**
-- [ ] E3: when to hedge (every fill + step, gated by `delta_hedge_threshold`)
-- [ ] E4: option quote pricing (vol/spread_vols, option-quote rounding policy)
-- [ ] E5: gamma-limit enforcement
-- [ ] E6: chain lifecycle (fixed strikes in v1 vs re-strike)
-- [ ] Record E1–E6 as a "Phase 5 Implementation Contracts" section in CLAUDE.md
+- [x] E1: quote-driven flow — `OptionsFlow` taker calls `dealer.on_option_trade`;
+      Clock owner-routes fills (`Order.agent_id`) so flow-carried hedges credit the dealer
+- [x] E2: contract = one lot; per-contract delta in lots = `bs_delta` (lot_size
+      cancels); `round(-net_delta)` half-to-even; **0.5-lot quantisation floor**
+- [x] E3: hedge after every option fill + every dealer step, gated by threshold
+- [x] E4: quotes at σ ± spread_vols **vol points** (1 pt = 0.01 σ); bid floored /
+      ask ceiled to `option_tick`; spread ≥ 1 tick; trades execute at the quote
+- [x] E5: gamma cap refuses |gamma|-increasing trades past `gamma_limit`
+- [x] E6: chain built once at dealer construction (anchor = seeded BBO mid)
+- [x] Recorded E1–E6 as "Phase 5 Implementation Contracts" in CLAUDE.md
 
 **Step 1 — `sim/agents/options_mm.py`**
-- [ ] `OptionsMMConfig` + `OptionsMarketMaker(Agent)` (chain + surface + position book)
-- [ ] `_net_delta_lots` (E2 single site) + `_portfolio_gamma` (E5)
-- [ ] `on_option_trade(...)` → `_hedge(...)` → equity market order
-- [ ] `step(state)`: recompute delta off live mid, hedge past threshold (E3)
-- [ ] `tests/test_options_mm.py`: net-delta math, post-hedge ≈ 0, hedge sign, gamma cap
-- [ ] commit: "Phase 5: options_mm complete"
+- [x] `OptionsMMConfig` + `OptionsMarketMaker(Agent)` (chain + surface + position book)
+- [x] `net_delta_lots` (E2 single site) + `portfolio_gamma` (E5)
+- [x] `on_option_trade(...)` → `_hedge(...)` → equity market order
+- [x] `step(state)`: recompute delta off live mid, hedge past threshold (E3)
+- [x] `tests/test_options_mm.py`: net-delta math, post-hedge bound, hedge signs,
+      gamma cap, threshold gating, expired series, no-reference-price (23 tests)
+- [x] commit: "Phase 5: options_mm complete"
 
 **Step 2 — options-demand flow (E1)**
-- [ ] `sim/agents/options_flow.py` Poisson taker → `dealer.on_option_trade(...)`
-- [ ] `agents.options_flow` config block; `tests/test_options_flow.py`
-- [ ] commit: "Phase 5: options_flow complete"
+- [x] `sim/agents/options_flow.py` Poisson taker → `dealer.on_option_trade(...)`
+- [x] Clock owner-routing extension (backward-compatible; pinned by tests)
+- [x] `tests/test_options_flow.py` (9 tests, incl. owner-routing integration)
+- [x] commit: "Phase 5: options_flow complete (+ clock owner-routing for E1)"
 
-**Step 3 — runner + e2e (close the loop)**
-- [ ] wire dealer + flow into the runner alongside Phase 3 agents
-- [ ] `tests/test_e2e_phase5.py`: option fills happen, equity book reacts,
-      **net delta within threshold of zero after each hedge cycle**
-- [ ] full suite green
+**Step 3+4 — config + runner + e2e (close the loop)**
+- [x] `agents.options_flow` block + `options_mm.{arrival_rate, option_tick}` in params.yaml
+- [x] dealer + flow wired into run_sim.py (switch on `agents.options_flow` presence)
+- [x] `tests/test_e2e_phase5.py`: option fills happen, equity book reacts,
+      **net delta within `max(threshold, 0.5)` lots of zero after each hedge cycle**
+- [x] full suite green (255)
 
-**Step 4 — close-out**
-- [ ] CLAUDE.md: Phase 5 → [x], modules [x], test count, contracts section
-- [ ] ROADMAP.md + this file updated
-- [ ] (if debt accrued) Phase 5 Audit backlog + dedicated cleanup commit
+**Step 5 — close-out**
+- [x] CLAUDE.md: Phase 5 → [x], modules [x], test count, contracts section
+- [x] ROADMAP.md + this file updated
+- [x] no P0/P1 debt — one latent pre-existing edge logged in Backlog below
 
-## Later: Phase 6 — Calibration, Analytics, Full Run
+## Now: Phase 6 — Calibration, Analytics, Full Run
 - [ ] effective-spread / depth / realized-vol metrics in `analytics/`
 - [ ] parameter calibration sweeps
 - [ ] dynamic vol surface (replace FlatVolSurface behind the same interface)
@@ -89,5 +95,14 @@ right phase. `[~]` = in progress. Detail for the current phase lives in
 ## Backlog (non-blocking, revisit when relevant)
 - [ ] P2-2 carryover: drop the `equity_mm`/`equity_mms` singular shim **iff**
       `test_e2e_phase2.py` is ever unfrozen (currently intentionally retained).
-- [ ] Consider whether the chain re-strikes as spot drifts (Phase 5/6 decision).
+- [ ] Consider whether the chain re-strikes as spot drifts (deferred to Phase 6
+      per E6; revisit if a run shows spot leaving the strike grid materially).
 - [ ] Trading-calendar time convention vs continuous (revisit in calibration).
+- [ ] Self-trade position accounting (pre-existing, latent): `base.on_fills`
+      applies one signed qty when an agent is both taker and maker of a fill,
+      but a self-trade's net position change should be 0. Reachable in theory
+      since LOB market-order surplus rests (a later opposite hedge/quote could
+      cross it); not observed in any run — book depth (200-lot seeds, MM
+      quotes) means hedges never leave surplus. Fix in `base.on_fills` (skip
+      when `taker_agent_id == maker_agent_id`) with a regression test if Phase
+      6 thins the book.
