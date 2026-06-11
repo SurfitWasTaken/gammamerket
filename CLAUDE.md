@@ -64,7 +64,10 @@ CLAUDE.md                 [x] This file
 
 Note: `viz.py`, `snapshot.py`, `repl.py`, `agents_repl.py` are developer tooling
 that live at the `sim/` top level, NOT under `analytics/`. They are outside the
-phase contracts and are not load-bearing for the simulation itself.
+phase contracts and are not load-bearing for the simulation itself. However,
+**`agents_repl.py` must be updated in the same commit that adds new agent types
+to a phase** — it is the primary visual feedback loop and keeping it stale makes
+the simulation opaque.
 
 ## Build Phases
 The project is structured as six incremental phases. Each phase produces a working,
@@ -308,6 +311,9 @@ Run all tests after every session: `pytest tests/ -v`
 3. **One module at a time** — complete and test one file before moving to the next
 4. **After each module**, run: `python -m pytest tests/test_<module>.py -v`
 5. **Commit checkpoints** — after each passing module: `git add -A && git commit -m "Phase N: <module> complete"`
+6. **Keep agents_repl.py in sync** — when a phase adds a new agent type, update
+   `sim/agents_repl.py` in the same commit so the synthetic market is always
+   inspectable. A phase that cannot be visually observed in the REPL is not done.
 
 ## Phase 3 Implementation Contracts
 
@@ -555,6 +561,8 @@ The simulation is only "working" when it reproduces:
 - Do not use Pandas DataFrames inside the simulation loop (use NumPy arrays)
 - Do not implement Phase N+1 features while Phase N is incomplete
 - Do not hardcode prices, rates, or agent parameters — everything goes in params.yaml
+- Do not add new agent types without updating `sim/agents_repl.py` — a phase that
+  cannot be watched in the REPL is not inspectable and therefore not done
 
 ## Glossary
 | Term | Meaning |
