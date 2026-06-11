@@ -37,10 +37,10 @@ sim/
 │   ├── institution.py    [x] Mean-reverting (OU-signal) limit speculator
 │   ├── equity_mm.py      [x] Equity market maker (inventory + vol-aware quoting)
 │   └── options_mm.py     [ ] Options dealer (BS pricing + delta hedging) — Phase 5
-├── options/              [ ] entire package — Phase 4
-│   ├── pricer.py         [ ] Black-Scholes pricing, Greeks (delta, gamma, vega)
-│   ├── surface.py        [ ] Implied vol surface (flat to start, dynamic later)
-│   └── chain.py          [ ] Options chain (strikes, expiries, series management)
+├── options/              [x] options pricing library — Phase 4
+│   ├── pricer.py         [x] Black-Scholes pricing, Greeks (delta, gamma, vega)
+│   ├── surface.py        [x] Implied vol surface (FlatVolSurface; VolSurface protocol)
+│   └── chain.py          [x] Options chain (strikes×expiries) + D1/D2 conversion sites
 ├── analytics/
 │   └── metrics.py        [x] returns, autocorrelation, trade sizes (NumPy-only).
 │                             (No logger.py yet — the Tape is the fill log.
@@ -52,7 +52,7 @@ sim/
 ├── snapshot.py           [x] Pure LOB-state serialization for viz IPC (dev tool)
 ├── repl.py               [x] Interactive LOB REPL (dev tool)
 ├── agents_repl.py        [x] Agent-driven live REPL with viz (dev tool)
-tests/                    [x] 141 passing tests (LOB, agents, clock, e2e, tooling)
+tests/                    [x] 217 passing tests (LOB, agents, clock, options, e2e, tooling)
 run_sim.py                [x] Phase 3 entry point
 CLAUDE.md                 [x] This file
 ```
@@ -70,15 +70,18 @@ observable experiment before the next adds complexity.
 | 1 | LOB Engine | [x] |
 | 2 | Equity Agents + Basic Microstructure | [x] |
 | 3 | Equity Market Maker | [x] |
-| 4 | Options Pricing + Chain | [ ] |
+| 4 | Options Pricing + Chain | [x] |
 | 5 | Options Dealer + Delta Hedging | [ ] |
 | 6 | Calibration, Analytics, Full Run | [ ] |
 
-**Current position (2026-06-10):** Phases 1–3 complete; all 141 tests pass
-(`.venv/bin/python -m pytest tests/ -q`). The Phase 3 Audit backlog has been
-**cleared** in a dedicated cleanup commit (see below). Phase 4 (Options Pricing +
-Chain) has **not** started — no `options/` package exists yet, but the
-correctness blockers that fed into it (vol baseline, MM P&L) are now resolved.
+**Current position (2026-06-11):** Phases 1–4 complete; all 217 tests pass
+(`.venv/bin/python -m pytest tests/ -q`). The Phase 3 Audit backlog was
+**cleared** in a dedicated cleanup commit (see below). Phase 4 shipped the
+`sim/options/` library — Black-Scholes price + Greeks (delta/gamma/vega), a flat
+implied-vol surface behind a `VolSurface` protocol, and a chain anchored to the
+live book mid — with the D1–D5 unit conversions frozen in the contracts section.
+No agent consumes it yet; that is Phase 5 (Options Dealer + Delta Hedging). No
+Phase 4 audit backlog was needed — the module review surfaced no P0/P1 debt.
 
 Update the Status column as phases complete.
 

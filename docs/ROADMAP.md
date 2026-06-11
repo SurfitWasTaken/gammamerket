@@ -9,14 +9,16 @@ the two in sync.
 | 1 | LOB Engine | ✅ done | Matching, price-time priority, partial fills |
 | 2 | Equity Agents + Microstructure | ✅ done | Retail + institution moving a seeded book |
 | 3 | Equity Market Maker | ✅ done | Two competing MMs, vol-adjusted spread, P&L |
-| 4 | **Options Pricing + Chain** | ⬜ **next** | BS prices + Greeks, flat surface, chain |
-| 5 | Options Dealer + Delta Hedging | ⬜ | Dealer quotes → hedges → moves equity book |
+| 4 | Options Pricing + Chain | ✅ done | BS prices + Greeks, flat surface, chain |
+| 5 | **Options Dealer + Delta Hedging** | ⬜ **next** | Dealer quotes → hedges → moves equity book |
 | 6 | Calibration, Analytics, Full Run | ⬜ | Stylised facts reproduced end-to-end |
 
 ## Where we are
-Phases 1–3 are complete and the Phase 3 Audit backlog is cleared (commit
-`5d5779e`). The codebase is clean, 141 tests pass, and there is no carried-over
-tech debt. **Phase 4 is the immediate work** — see `PHASE_4_WORKPLAN.md`.
+Phases 1–4 are complete. The codebase is clean, **217 tests pass**, and there is
+no carried-over tech debt. Phase 4 shipped the `sim/options/` library (pricer,
+flat surface, chain) with the D1–D5 unit conversions frozen in CLAUDE.md; no
+agent consumes it yet. **Phase 5 (Options Dealer + Delta Hedging) is the
+immediate work** — it is the core experiment (the hedging feedback loop).
 
 ## Phase 4 — Options Pricing + Chain  (detailed plan: `PHASE_4_WORKPLAN.md`)
 New package `sim/options/`:

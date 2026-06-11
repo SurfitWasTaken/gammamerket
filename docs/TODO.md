@@ -4,7 +4,7 @@ Keep this current as you work. Check items off; add discovered tasks under the
 right phase. `[~]` = in progress. Detail for Phase 4 lives in
 `PHASE_4_WORKPLAN.md`.
 
-## Now: Phase 4 — Options Pricing + Chain
+## ✅ Done: Phase 4 — Options Pricing + Chain  (complete 2026-06-11, 217 tests)
 **Step 0 — resolve & record design decisions (blocking; see workplan §Step 0)**
 - [x] D1: sim-time → years convention; add `market.minutes_per_year` to config
 - [x] D2: integer-tick spot → BS `S` (single conversion site)
@@ -41,11 +41,11 @@ right phase. `[~]` = in progress. Detail for Phase 4 lives in
 - [x] full suite green
 
 **Step 6 — close-out**
-- [ ] CLAUDE.md: Phase 4 → [x], modules [x], test count, contracts section
-- [ ] ROADMAP.md + this file updated
-- [ ] (if debt accrued) Phase 4 Audit backlog + dedicated cleanup commit
+- [x] CLAUDE.md: Phase 4 → [x], modules [x], test count (217), contracts section
+- [x] ROADMAP.md + this file updated
+- [x] no debt accrued — module review surfaced no P0/P1; no Phase 4 Audit needed
 
-## Next: Phase 5 — Options Dealer + Delta Hedging
+## Now: Phase 5 — Options Dealer + Delta Hedging
 - [ ] `sim/agents/options_mm.py`: quote options off pricer + surface
 - [ ] on each options fill: recompute portfolio delta
 - [ ] hedge: `hedge_qty = -net_delta * lot_size` → equity market order
