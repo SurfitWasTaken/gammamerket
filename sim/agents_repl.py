@@ -1,9 +1,12 @@
 """Agent-driven live REPL.
 
-Drives the discrete-event clock with retail + institution agents and
-streams updates to the matplotlib live view (the same `sim.viz`
-subprocess used by `sim.repl`). Manual orders can still be submitted
-alongside the agents.
+Drives the discrete-event clock with the full Phase 3 agent set —
+retail noise traders, an institutional speculator, and the competing
+equity market makers — and streams updates to the matplotlib live view
+(the same `sim.viz` subprocess used by `sim.repl`). The market makers
+provide continuous two-sided liquidity, so the book stays two-sided and
+the price behaves like the Phase 3 sim rather than emptying out. Manual
+orders can still be submitted alongside the agents.
 
 Usage:
     python -m sim.agents_repl [--viz] [--config path/to/params.yaml]
@@ -43,6 +46,7 @@ if __package__ in (None, ""):
 
 import numpy as np
 
+from sim.agents.equity_mm import EquityMarketMaker, EquityMMConfig
 from sim.agents.institution import Institution
 from sim.agents.retail import Retail
 from sim.config.loader import load_config
@@ -154,12 +158,43 @@ def _setup_sim(config: dict) -> None:
         )
     )
 
-    clock = Clock(book, tape, rng)
+    # Phase 3 market makers. Without these the book has no continuous
+    # two-sided liquidity provider: retail trades only via market orders
+    # and the institution rests a single order at a time, so the book
+    # gets swept empty -> one-sided -> spread/mid == None -> erratic price.
+    # Accept the "equity_mms" list (spec form) and the legacy singular
+    # "equity_mm" key, mirroring run_sim._build_agents (Audit P2-2).
+    mm_cfgs = config["agents"].get("equity_mms")
+    if mm_cfgs is None:
+        mm_cfgs = [config["agents"]["equity_mm"]]
+    for mm_cfg in mm_cfgs:
+        agents.append(
+            EquityMarketMaker(
+                agent_id=mm_cfg.get("id", "mm0"),
+                config=EquityMMConfig(
+                    arrival_rate=float(mm_cfg["arrival_rate"]),
+                    spread_target=int(mm_cfg["spread_target"]),
+                    inventory_limit=int(mm_cfg["inventory_limit"]),
+                    risk_aversion=float(mm_cfg["risk_aversion"]),
+                    quote_size=int(mm_cfg["quote_size"]),
+                    max_orders_per_side=int(mm_cfg["max_orders_per_side"]),
+                    vol_window=int(mm_cfg.get("vol_window", 20)),
+                    vol_multiplier=float(mm_cfg.get("vol_multiplier", 1.0)),
+                    baseline_vol_bps=float(mm_cfg.get("baseline_vol_bps", 5.0)),
+                ),
+                rng=rng,
+            )
+        )
+
+    clock = Clock(book, tape, rng, vol_window=int(market.get("vol_window", 20)))
     for a in agents:
         if isinstance(a, Retail):
             clock.register(a, float(retail_cfg["arrival_rate"]))
         elif isinstance(a, Institution):
             clock.register(a, float(inst_cfg["arrival_rate"]))
+        elif isinstance(a, EquityMarketMaker):
+            mm_cfg = next(m for m in mm_cfgs if m.get("id", "mm0") == a.agent_id)
+            clock.register(a, float(mm_cfg["arrival_rate"]))
 
     _write_snapshot()
 
@@ -286,6 +321,11 @@ def state() -> None:
             f"  inst: signal={inst.signal:+7.3f}  pos={inst.position:+5d}  "
             f"resting={resting}"
         )
+    for mm in (a for a in agents if isinstance(a, EquityMarketMaker)):
+        print(
+            f"  {mm.agent_id}: pos={mm.position:+5d}  pnl={mm.total_pnl:+10.1f}  "
+            f"cash={mm.cash_flow:+10.1f}"
+        )
 
 
 def reset(seed: Optional[int] = None) -> None:
@@ -337,7 +377,7 @@ atexit.register(viz_off)
 
 
 _BANNER = """
-gammarket agents REPL  (Phase 2)
+gammarket agents REPL  (Phase 3: retail + institution + equity MMs)
 
   Start: python -m sim.agents_repl [--viz] [--config path/to/params.yaml]
 
@@ -385,9 +425,11 @@ def main() -> None:
     _setup_sim(loaded)
 
     print(_BANNER)
+    n_mms = len(loaded["agents"].get("equity_mms", [loaded["agents"].get("equity_mm")]))
     print(
         f"  loaded: n_retail={int(loaded['agents']['retail']['n_agents'])}, "
-        f"1 institution, max_steps={loaded['market']['max_steps']}, "
+        f"1 institution, {n_mms} equity MM(s), "
+        f"max_steps={loaded['market']['max_steps']}, "
         f"seed={loaded['market']['seed']}"
     )
     if args.viz:
@@ -418,6 +460,7 @@ def main() -> None:
         "Order": Order,
         "Institution": Institution,
         "Retail": Retail,
+        "EquityMarketMaker": EquityMarketMaker,
     }
     code.interact(banner="", local=namespace, exitmsg="bye")
 
