@@ -92,24 +92,30 @@ class Clock:
         state = self._build_state(agent)
         actions = agent.step(state)
         for action in actions:
+            # An action is credited to its *owning* agent (the action's
+            # agent_id), not necessarily the stepping agent: the Phase 5
+            # options flow returns the dealer's hedge orders from its own
+            # step (E1 owner-routing). For every agent that emits only its
+            # own actions, owner == agent, so behaviour is unchanged.
+            owner = self.agents.get(action.agent_id, agent)
             if isinstance(action, Order):
-                agent.open_order_ids.add(action.order_id)
+                owner.open_order_ids.add(action.order_id)
                 if action.is_market:
                     fills = self.book.submit_market(action)
                 else:
                     fills = self.book.submit_limit(action)
                 if not fills:
                     continue
-                agent.on_fills(fills)
+                owner.on_fills(fills)
                 for fill in fills:
                     if fill.maker_agent_id == fill.taker_agent_id:
                         continue
                     maker_agent = self.agents.get(fill.maker_agent_id)
-                    if maker_agent is not None and maker_agent is not agent:
+                    if maker_agent is not None and maker_agent is not owner:
                         maker_agent.on_fills([fill])
             elif isinstance(action, Cancel):
                 self.book.cancel(action.order_id)
-                agent.open_order_ids.discard(action.order_id)
+                owner.open_order_ids.discard(action.order_id)
         rate = self.rates[event.agent_id]
         self._schedule_next(agent, dt=self.rng.exponential(1.0 / rate))
         return self.now
