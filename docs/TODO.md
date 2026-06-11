@@ -6,19 +6,20 @@ right phase. `[~]` = in progress. Detail for Phase 4 lives in
 
 ## Now: Phase 4 — Options Pricing + Chain
 **Step 0 — resolve & record design decisions (blocking; see workplan §Step 0)**
-- [ ] D1: sim-time → years convention; add `market.minutes_per_year` to config
-- [ ] D2: integer-tick spot → BS `S` (single conversion site)
-- [ ] D3: moneyness → integer strikes (single conversion site)
-- [ ] D4: option price units / rounding policy (float in Phase 4)
-- [ ] D5: Greeks set (delta, gamma, vega required)
-- [ ] Record D1–D5 as a "Phase 4 Implementation Contracts" section in CLAUDE.md
+- [x] D1: sim-time → years convention; add `market.minutes_per_year` to config
+- [x] D2: integer-tick spot → BS `S` (single conversion site)
+- [x] D3: moneyness → integer strikes (single conversion site)
+- [x] D4: option price units / rounding policy (float in Phase 4)
+- [x] D5: Greeks set (delta, gamma, vega required)
+- [x] Record D1–D5 as a "Phase 4 Implementation Contracts" section in CLAUDE.md
+- [x] Normal CDF source: SciPy (`scipy.special.ndtr`); pinned `scipy>=1.10` in requirements.txt
 
 **Step 1 — `sim/options/pricer.py`**
-- [ ] `Greeks` frozen dataclass
-- [ ] `bs_price(...)` with T≤0 / σ≤0 / invalid-input handling
-- [ ] `bs_greeks(...)` (delta, gamma, vega)
-- [ ] `tests/test_pricer.py`: known value, put-call parity, Greek sanity, expiry
-- [ ] commit: "Phase 4: pricer complete"
+- [x] `Greeks` frozen dataclass
+- [x] `bs_price(...)` with T≤0 / σ≤0 / invalid-input handling
+- [x] `bs_greeks(...)` (delta, gamma, vega)
+- [x] `tests/test_pricer.py`: known value, put-call parity, Greek sanity, expiry
+- [x] commit: "Phase 4: pricer complete"
 
 **Step 2 — `sim/options/surface.py`**
 - [ ] `FlatVolSurface` with `vol(strike, expiry)` interface

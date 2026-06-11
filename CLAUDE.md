@@ -370,6 +370,61 @@ The runner wires this at startup: `book = LimitOrderBook(on_fill=tape.append)`.
 Existing Phase 1 tests construct `LimitOrderBook()` with no callback — behaviour unchanged.
 Analytics layers in Phase 6 may inject additional callbacks without touching LOB or agents.
 
+## Phase 4 Implementation Contracts
+
+> Resolved at the start of Phase 4 (2026-06-11) from `docs/PHASE_4_WORKPLAN.md`
+> Step 0. These five unit conversions are **frozen** — every Greek and every
+> Phase 5 hedge depends on them. The `sim/options/` package implements them; the
+> Phase 5 dealer consumes them. All recommended defaults were adopted.
+
+### D1 — Simulation time → years (`T` in Black-Scholes)
+- `MarketState.timestamp` / `Clock.now` is in **clock minutes**. BS needs `T` in
+  **years**. Convention: **continuous calendar**, `market.minutes_per_year =
+  525_600` (365 × 24 × 60). Matches the sim's continuous-time model (Poisson
+  arrivals, OU in minutes); a trading-calendar convention (98_280) is deferred
+  to Phase 6 calibration.
+- Formula: `T_years = max(expiry_minutes − now_minutes, 0) / minutes_per_year`.
+- **Single conversion site:** `chain.time_to_expiry_years(series, now_minutes,
+  minutes_per_year)`. Never inline this division anywhere else.
+
+### D2 — Integer-tick underlying → BS spot `S`
+- BS is scale-free in S/K, so the tick price is used **directly** as `S` (and
+  strikes as `K`): 1 tick = 1 price unit. At `tick_size = 1` this is exact.
+- **Single conversion site:** `chain.spot_from_book(mid, tick_size) -> float`
+  (returns `mid * tick_size`). If `tick_size` ever ≠ 1 only this function
+  changes; callers never multiply by `tick_size` themselves.
+
+### D3 — Moneyness → integer strikes
+- Strikes are generated from **moneyness offsets** around an anchor spot, not
+  hardcoded. Config: `options.strikes_pct: [-0.05, -0.025, 0.0, 0.025, 0.05]`.
+- Rule: `K = round(anchor_spot * (1 + pct))` **snapped to the nearest tick
+  multiple** (≥ 1 tick). At anchor 10_000 → `[9500, 9750, 10000, 10250,
+  10500]`.
+- **Anchor = the book mid at chain construction.** Phase 4 builds the chain
+  **once** and keeps strikes fixed as spot drifts; re-striking is a Phase 5/6
+  decision (logged in `docs/TODO.md` backlog).
+
+### D4 — Option price units & rounding
+- `bs_price` / `bs_greeks` return **pure floats** in the same unit as `S`
+  (ticks). Phase 4 does **no** tick-rounding of option values.
+- Quote-rounding policy (snapping dealer option quotes to a tradable grid) is
+  **owned by Phase 5**, where the options market is defined.
+
+### D5 — Greeks set
+- Implement **delta, gamma, vega** only — the set Phase 5 hedging requires
+  (delta + gamma) plus vega for surface sensitivity. The frozen `Greeks`
+  dataclass carries exactly these three fields.
+- **theta / rho are intentionally not shipped** in Phase 4 (avoid untested
+  Greeks). They can be added later behind the same dataclass if a phase needs
+  them, with their own known-value tests.
+
+### Normal CDF / PDF source
+- `bs_price` / `bs_greeks` use **SciPy** for the standard normal: `N(x)` via
+  `scipy.special.ndtr`, `N'(x)` via `scipy.stats.norm.pdf`. This honours the
+  CLAUDE.md design decision ("SciPy for norm CDF"). SciPy was not previously
+  installed; it is now pinned in `requirements.txt` (`scipy>=1.10`) and is part
+  of the approved dependency set.
+
 ## Known Design Decisions & Rationale
 - **Integer ticks for prices**: avoids floating-point drift corrupting the LOB sort order
 - **Poisson arrivals for retail**: standard in market microstructure literature (Glosten-Milgrom)
