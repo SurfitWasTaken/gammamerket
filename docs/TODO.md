@@ -85,7 +85,14 @@ right phase. `[~]` = in progress. Detail for the current phase lives in
 - [x] ROADMAP.md + this file updated
 - [x] no P0/P1 debt — one latent pre-existing edge logged in Backlog below
 
-## Now: Phase 6 — Calibration, Analytics, Full Run
+## Now: Phase 6 — Calibration, Analytics, Full Run (255 tests, live dashboard shipped 2026-06-13)
+- [x] `sim/live/state_writer.py` — agent state extraction + atomic JSON write
+- [x] `sim/live/agent_viewer.py` — Rich per-agent dashboards (market overview,
+      retail table, institution, equity MMs, options MM, options flow)
+- [x] `sim/live/surface_viz.py` — matplotlib 3D options price surface (strike × expiry)
+- [x] `sim/live/sim_runner.py` — event loop with live state broadcasting
+- [x] `sim/live/launch.py` — macOS Terminal.app spawner via osascript (8 windows)
+- [x] Added `rich>=13.0` to `requirements.txt`; all 255 tests unchanged
 - [ ] effective-spread / depth / realized-vol metrics in `analytics/`
 - [ ] parameter calibration sweeps
 - [ ] dynamic vol surface (replace FlatVolSurface behind the same interface)

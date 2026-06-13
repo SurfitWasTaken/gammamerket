@@ -304,11 +304,19 @@ def show() -> None:
             print(f"    BID {p:>6}  qty={book.depth(Side.BUY, p)}")
 
 
+def _max_steps() -> int:
+    """Respect the config's max_steps limit so the sim doesn't degenerate."""
+    return int(cfg.get("market", {}).get("max_steps", 0))
+
+
 def step() -> float:
     """Run one sim event. Returns the new clock time."""
     if clock is None:
         print("(no sim running; call reset())")
         return 0.0
+    if _max_steps() and clock.step_count >= _max_steps():
+        print(f"(max_steps={_max_steps()} reached)")
+        return float(clock.now)
     try:
         t = clock.step()
     except StopIteration:
@@ -323,7 +331,11 @@ def run(n: int = 10) -> float:
     if clock is None:
         print("(no sim running; call reset())")
         return 0.0
+    cap = _max_steps()
     for _ in range(max(0, n)):
+        if cap and clock.step_count >= cap:
+            print(f"(max_steps={cap} reached)")
+            break
         try:
             clock.step()
         except StopIteration:
@@ -340,9 +352,13 @@ def auto(delay: float = 0.02) -> None:
     if clock is None:
         print("(no sim running; call reset())")
         return
+    cap = _max_steps()
     print(f"  auto-running  delay={delay}s/step  Ctrl-C to stop")
     try:
         while True:
+            if cap and clock.step_count >= cap:
+                print(f"(max_steps={cap} reached)")
+                break
             try:
                 clock.step()
             except StopIteration:

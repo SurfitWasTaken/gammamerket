@@ -11,7 +11,7 @@ the two in sync.
 | 3 | Equity Market Maker | ✅ done | Two competing MMs, vol-adjusted spread, P&L |
 | 4 | Options Pricing + Chain | ✅ done | BS prices + Greeks, flat surface, chain |
 | 5 | Options Dealer + Delta Hedging | ✅ done | Dealer quotes → hedges → moves equity book |
-| 6 | **Calibration, Analytics, Full Run** | ⬜ **next** | Stylised facts reproduced end-to-end |
+| 6 | **Calibration, Analytics, Full Run** | 🔶 **in progress** | Live multi-terminal dashboard; stylised facts reproduced end-to-end |
 
 ## Where we are
 Phases 1–5 are complete. The codebase is clean and **255 tests pass**. Phase 5
@@ -20,8 +20,10 @@ flow (`agents/options_flow.py`), closing the core feedback loop: option fill →
 delta recompute → equity market order → underlying moves → re-hedge. The E1–E6
 decisions are frozen in CLAUDE.md (Phase 5 Implementation Contracts), and the
 e2e contract holds — net delta within `max(threshold, 0.5)` lots of zero after
-every hedge cycle. **Phase 6 (Calibration, Analytics, Full Run) is the
-immediate work** — measuring whether the loop reproduces the stylised facts.
+every hedge cycle. **Phase 6 (Calibration, Analytics, Full Run) is in progress**
+— the live multi-terminal dashboard (`sim/live/`) shipped with `Rich`-powered
+per-agent dashboards, matplotlib 3D options surface, and macOS Terminal.app
+spawning. Stylised facts validation and parameter calibration remain.
 
 ## Phase 4 — Options Pricing + Chain  (detailed plan: `PHASE_4_WORKPLAN.md`)
 New package `sim/options/`:

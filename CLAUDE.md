@@ -41,6 +41,12 @@ sim/
 │   ├── equity_mm.py      [x] Equity market maker (inventory + vol-aware quoting)
 │   ├── options_mm.py     [x] Options dealer: BS quoting + delta hedging — Phase 5
 │   └── options_flow.py   [x] Options-demand flow (Poisson taker, E1) — Phase 5
+├── live/                 [x] Phase 6 live dashboard: multi-terminal + 3D surface
+│   ├── state_writer.py   [x] Agent state extraction + atomic JSON write
+│   ├── agent_viewer.py   [x] Rich per-agent terminal dashboard (8 viewers)
+│   ├── surface_viz.py    [x] Matplotlib 3D options price surface (strike × expiry)
+│   ├── sim_runner.py     [x] Step loop with live state broadcasting to file
+│   └── launch.py         [x] macOS Terminal.app spawner via osascript
 ├── options/              [x] options pricing library — Phase 4
 │   ├── pricer.py         [x] Black-Scholes pricing, Greeks (delta, gamma, vega)
 │   ├── surface.py        [x] Implied vol surface (FlatVolSurface; VolSurface protocol)
@@ -80,9 +86,9 @@ observable experiment before the next adds complexity.
 | 3 | Equity Market Maker | [x] |
 | 4 | Options Pricing + Chain | [x] |
 | 5 | Options Dealer + Delta Hedging | [x] |
-| 6 | Calibration, Analytics, Full Run | [ ] |
+| 6 | Calibration, Analytics, Full Run | [~] |
 
-**Current position (2026-06-12):** Phases 1–5 complete; all 255 tests pass
+**Current position (2026-06-13):** Phases 1–5 complete; all 255 tests pass
 (`.venv/bin/python -m pytest tests/ -q`). Phase 5 shipped the options dealer
 (`agents/options_mm.py`) and the quote-driven demand flow
 (`agents/options_flow.py`), closing the core feedback loop: option fill → delta
@@ -93,7 +99,17 @@ owning agent) so the flow can carry dealer-owned hedge orders to the book. The
 e2e contract holds: net delta within `max(delta_hedge_threshold, 0.5)` lots of
 zero after every hedge cycle. No P0/P1 debt surfaced; one latent self-trade
 accounting edge (pre-existing in `base.on_fills`) is logged in the
-`docs/TODO.md` backlog. Next: Phase 6 (Calibration, Analytics, Full Run).
+`docs/TODO.md` backlog.
+
+**Phase 6** (Calibration, Analytics, Full Run) is in progress. The live
+multi-terminal dashboard (`sim/live/`) shipped: `state_writer.py` serialises the
+full simulation state (all agent positions, P&L, Greeks, LOB market data) to a
+JSON file after every clock step; the `Rich`-powered `agent_viewer.py` provides
+per-agent terminal dashboards with colour-coded P&L, position levels, option
+Greeks, and hedge logs; `surface_viz.py` renders an interactive 3D options price
+surface (strike × time-to-expiry) via matplotlib; and `launch.py` spawns all 8
+Terminal windows + the 3D surface via macOS `osascript` for a complete live
+monitoring experience.
 
 Update the Status column as phases complete.
 
@@ -168,7 +184,7 @@ frozen test; revisit only if that test is ever unfrozen.
 - **Core sim**: pure Python + NumPy (no Pandas in the hot path)
 - **Options pricing**: SciPy for norm CDF in Black-Scholes
 - **Event scheduling**: custom priority queue (heapq) — no SimPy dependency
-- **Visualisation**: Matplotlib (post-run), optional Rich for terminal output
+- **Visualisation**: Matplotlib (post-run, 3D surface), Rich for terminal dashboards
 - **Testing**: pytest
 - **Config**: PyYAML for params.yaml
 
